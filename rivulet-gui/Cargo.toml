@@ -1,0 +1,17 @@
+[package]
+name = "rivulet-gui"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rivulet"
+path = "src/main.rs"
+
+[dependencies]
+rivulet-core = { path = "../rivulet-core", features = ["obs-compat"] }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+eframe = "0.27"
+egui = "0.27"

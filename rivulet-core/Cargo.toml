@@ -1,0 +1,21 @@
+[package]
+name = "rivulet-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+parking_lot = "0.12"
+dirs = "5.0"
+toml = "0.8"
+async-trait = "0.1"
+
+rivulet-obs-compat = { path = "../rivulet-obs-compat", optional = true }
+
+[features]
+default = []
+obs-compat = ["rivulet-obs-compat"]

@@ -1,0 +1,8 @@
+[package]
+name = "rivulet-plugins"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rivulet-core = { path = "../rivulet-core" }
+anyhow = { workspace = true }

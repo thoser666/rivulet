@@ -1,0 +1,12 @@
+[package]
+name = "rivulet-obs-compat"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rivulet-core = { path = "../rivulet-core" }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+libloading = "0.8"
+walkdir = "2.4"
