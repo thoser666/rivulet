@@ -1,4 +1,3 @@
-use anyhow::Result;
 use eframe::egui;
 use rivulet_core::*;
 use rivulet_obs_compat::PluginManager;
@@ -7,7 +6,7 @@ mod app;
 
 use app::RivuletApp;
 
-fn main() -> Result<()> {
+fn main() -> eframe::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter("rivulet=debug,info")
         .init();
@@ -36,7 +35,7 @@ fn main() -> Result<()> {
                 RivuletEngine::new()
             }).unwrap();
 
-            Ok(Box::new(RivuletApp::new(cc, engine, rt)))
+            Box::new(RivuletApp::new(cc, engine, rt))
         }),
     )?;
 
