@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "rivulet-core",
-    "rivulet-gui", 
+    "rivulet-gui",
     "rivulet-capture",
     "rivulet-audio",
     "rivulet-streaming",
@@ -9,6 +9,13 @@ members = [
     "rivulet-obs-compat"
 ]
 resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+authors = ["thoser666"]
+edition = "2021"
+repository = "https://github.com/thoser666/rivulet"
+license = "MIT"
 
 [workspace.dependencies]
 tokio = { version = "1.0", features = ["full"] }
