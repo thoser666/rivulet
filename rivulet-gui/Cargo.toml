@@ -2,16 +2,22 @@
 name = "rivulet-gui"
 version = "0.1.0"
 edition = "2021"
+description = "GUI application for Rivulet streaming software"
 
 [[bin]]
 name = "rivulet"
 path = "src/main.rs"
 
 [dependencies]
-rivulet-core = { path = "../rivulet-core", features = ["obs-compat"] }
+rivulet-core = { path = "../rivulet-core" }
+rivulet-obs-compat = { path = "../rivulet-obs-compat" }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 eframe = "0.27"
 egui = "0.27"
+egui_extras = "0.27"
+rfd = "0.14"
+poll-promise = "0.3"
+chrono = "0.4"
