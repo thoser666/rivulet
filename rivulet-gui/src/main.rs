@@ -1,14 +1,19 @@
 use eframe::egui;
 use rivulet_core::*;
 use rivulet_obs_compat::PluginManager;
+use tracing_subscriber::EnvFilter;
 
 mod app;
 
 use app::RivuletApp;
 
-fn main() -> eframe::Result<()> {
+fn main() {
+    // Advanced logging with env_filter
     tracing_subscriber::fmt()
-        .with_env_filter("rivulet=debug,info")
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("rivulet=debug,info"))
+        )
         .init();
 
     tracing::info!("Starting Rivulet GUI");
@@ -26,18 +31,19 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
 
-    eframe::run_native(
+    if let Err(e) = eframe::run_native(
         "Rivulet",
         options,
         Box::new(|cc| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
+            let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
             let engine = rt.block_on(async {
-                RivuletEngine::new()
-            }).unwrap();
+                RivuletEngine::new().expect("Failed to initialize engine")
+            });
 
-            Box::new(RivuletApp::new(cc, engine, rt))
+            Box::new(RivuletApp::new(cc, engine, rt)) as Box<dyn eframe::App>
         }),
-    )?;
-
-    Ok(())
+    ) {
+        tracing::error!("Application error: {}", e);
+        std::process::exit(1);
+    }
 }
