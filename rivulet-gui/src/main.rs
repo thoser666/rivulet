@@ -8,7 +8,6 @@ mod app;
 use app::RivuletApp;
 
 fn main() {
-    // Advanced logging with env_filter
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
@@ -18,7 +17,6 @@ fn main() {
 
     tracing::info!("Starting Rivulet GUI");
 
-    // Initialize OBS plugin compatibility
     if let Err(e) = PluginManager::initialize() {
         tracing::warn!("Failed to initialize OBS compatibility: {}", e);
     }
@@ -35,12 +33,20 @@ fn main() {
         "Rivulet",
         options,
         Box::new(|cc| {
-            let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
-            let engine = rt.block_on(async {
-                RivuletEngine::new().expect("Failed to initialize engine")
-            });
+            let rt = tokio::runtime::Runtime::new()
+                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+                    Box::new(e)
+                })?;
 
-            Box::new(RivuletApp::new(cc, engine, rt)) as Box<dyn eframe::App>
+            let engine = rt.block_on(async {
+                RivuletEngine::new()
+                    .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+                        let boxed: Box<dyn std::error::Error + Send + Sync> = e.into();
+                        boxed
+                    })
+            })?;
+
+            Ok(Box::new(RivuletApp::new(cc, engine, rt)))
         }),
     ) {
         tracing::error!("Application error: {}", e);
