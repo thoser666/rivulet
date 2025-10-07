@@ -90,11 +90,7 @@ pub mod windows {
         fn stop(&mut self) -> Result<()> {
             tracing::info!("Stopping screen capture");
             self.capturing = false;
-            if let Some(dup) = self.duplication.take() {
-                unsafe {
-                    let _ = dup.ReleaseFrame();
-                }
-            }
+            self.duplication = None;
             Ok(())
         }
 
@@ -112,77 +108,130 @@ pub mod windows {
                 let mut frame_info = DXGI_OUTDUPL_FRAME_INFO::default();
                 let mut desktop_resource = None;
 
+                tracing::debug!("Attempting to acquire frame...");
+
                 // Try to acquire next frame
-                match duplication.AcquireNextFrame(
-                    0, // Timeout in ms (0 = no wait)
+                let acquire_result = duplication.AcquireNextFrame(
+                    500, // 500ms timeout
                     &mut frame_info,
                     &mut desktop_resource,
-                ) {
+                );
+
+                tracing::debug!("AcquireNextFrame result: {:?}", acquire_result);
+
+                match acquire_result {
                     Ok(_) => {
-                        // Frame acquired successfully
-                        let resource = desktop_resource.unwrap();
+                        tracing::debug!("Frame acquired, processing...");
 
-                        // Convert to texture
-                        let texture: ID3D11Texture2D = resource.cast()
-                            .context("Failed to cast to texture")?;
+                        let result = (|| -> Result<CapturedFrame> {
+                            tracing::debug!("Getting resource...");
+                            let resource = desktop_resource.ok_or_else(|| anyhow::anyhow!("No resource"))?;
 
-                        // Create staging texture for CPU readback
-                        let mut desc = D3D11_TEXTURE2D_DESC::default();
-                        texture.GetDesc(&mut desc);
+                            tracing::debug!("Casting to texture...");
+                            let texture: ID3D11Texture2D = resource.cast()
+                                .context("Failed to cast to texture")?;
 
-                        desc.Usage = D3D11_USAGE_STAGING;
-                        desc.BindFlags = 0;
-                        desc.CPUAccessFlags = 1; // D3D11_CPU_ACCESS_READ
-                        desc.MiscFlags = 0;
+                            tracing::debug!("Getting texture description...");
+                            let mut desc = D3D11_TEXTURE2D_DESC::default();
+                            texture.GetDesc(&mut desc);
 
-                        let staging_texture = {
-                            let mut texture = None;
-                            self.device.CreateTexture2D(&desc, None, Some(&mut texture))?;
-                            texture.context("Failed to create staging texture")?
-                        };
+                            tracing::debug!("Texture: {}x{}, Format: {:?}", desc.Width, desc.Height, desc.Format);
 
-                        // Copy from GPU to staging
-                        self.context.CopyResource(&staging_texture, &texture);
+                            // Copy fields from original desc
+                            let staging_desc = D3D11_TEXTURE2D_DESC {
+                                Width: desc.Width,
+                                Height: desc.Height,
+                                MipLevels: desc.MipLevels,
+                                ArraySize: desc.ArraySize,
+                                Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                                SampleDesc: desc.SampleDesc,
+                                Usage: D3D11_USAGE_STAGING,
+                                BindFlags: 0,
+                                CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
+                                MiscFlags: 0,
+                            };
 
-                        // Map staging texture to read pixels
-                        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
-                        self.context.Map(
-                            &staging_texture,
-                            0,
-                            D3D11_MAP_READ,
-                            0,
-                            Some(&mut mapped),
-                        ).context("Failed to map texture")?;
+                            tracing::debug!("Creating staging texture with BGRA8 format...");
+                            let staging_texture = {
+                                let mut texture = None;
+                                self.device.CreateTexture2D(&staging_desc, None, Some(&mut texture))
+                                    .context("CreateTexture2D failed")?;
+                                texture.context("Failed to create staging texture")?
+                            };
 
-                        // Copy pixel data
-                        let data_size = (mapped.RowPitch * desc.Height) as usize;
-                        let src_ptr = mapped.pData as *const u8;
-                        let data = std::slice::from_raw_parts(src_ptr, data_size).to_vec();
+                            // Since formats differ, we need an intermediate copy texture
+                            // Create a render target texture with BGRA8 format
+                            let mut copy_desc = staging_desc;
+                            copy_desc.Usage = D3D11_USAGE_DEFAULT;
+                            copy_desc.BindFlags = D3D11_BIND_RENDER_TARGET.0 as u32;
+                            copy_desc.CPUAccessFlags = 0;
 
-                        // Unmap
-                        self.context.Unmap(&staging_texture, 0);
+                            tracing::debug!("Creating intermediate copy texture...");
+                            let copy_texture = {
+                                let mut texture = None;
+                                self.device.CreateTexture2D(&copy_desc, None, Some(&mut texture))
+                                    .context("CreateTexture2D for copy failed")?;
+                                texture.context("Failed to create copy texture")?
+                            };
 
-                        // Release frame
-                        duplication.ReleaseFrame().ok();
+                            // Copy original -> copy_texture (GPU will handle format conversion)
+                            tracing::debug!("Copying with format conversion...");
+                            self.context.CopyResource(&copy_texture, &texture);
 
-                        // Update dimensions if needed (after releasing borrow)
-                        if self.width == 0 || self.height == 0 {
-                            self.width = desc.Width;
-                            self.height = desc.Height;
-                            tracing::info!("Capture dimensions: {}x{}", self.width, self.height);
-                        }
+                            // Copy copy_texture -> staging (now same format)
+                            self.context.CopyResource(&staging_texture, &copy_texture);
 
-                        let frame = CapturedFrame::new(
-                            data,
-                            desc.Width,
-                            desc.Height,
-                            mapped.RowPitch,
-                        );
+                            tracing::debug!("Mapping texture...");
+                            let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+                            self.context.Map(
+                                &staging_texture,
+                                0,
+                                D3D11_MAP_READ,
+                                0,
+                                Some(&mut mapped),
+                            ).context("Failed to map texture")?;
 
-                        Ok(Some(frame))
+                            tracing::debug!("Mapped: RowPitch={}", mapped.RowPitch);
+
+                            // Copy pixel data
+                            let data_size = (mapped.RowPitch * staging_desc.Height) as usize;
+                            tracing::debug!("Copying {} bytes...", data_size);
+                            let src_ptr = mapped.pData as *const u8;
+                            let data = std::slice::from_raw_parts(src_ptr, data_size).to_vec();
+
+                            tracing::debug!("Unmapping...");
+                            self.context.Unmap(&staging_texture, 0);
+
+                            // Update dimensions if needed
+                            if self.width == 0 || self.height == 0 {
+                                self.width = staging_desc.Width;
+                                self.height = staging_desc.Height;
+                                tracing::info!("Capture dimensions: {}x{}", self.width, self.height);
+                            }
+
+                            tracing::debug!("Creating frame...");
+                            let frame = CapturedFrame::new(
+                                data,
+                                staging_desc.Width,
+                                staging_desc.Height,
+                                mapped.RowPitch,
+                            );
+
+                            Ok(frame)
+                        })();
+
+                        tracing::debug!("Frame processing result: {:?}", result.as_ref().map(|_| "Ok").map_err(|e| e.to_string()));
+
+                        // ALWAYS release frame after acquire, even on error
+                        tracing::debug!("Releasing frame...");
+                        let release_result = duplication.ReleaseFrame();
+                        tracing::debug!("ReleaseFrame result: {:?}", release_result);
+                        release_result.context("Failed to release frame")?;
+
+                        result.map(Some)
                     }
                     Err(e) if e.code() == DXGI_ERROR_WAIT_TIMEOUT => {
-                        // No new frame available
+                        // No new frame available - this is normal
                         Ok(None)
                     }
                     Err(e) if e.code() == DXGI_ERROR_ACCESS_LOST => {
@@ -193,6 +242,7 @@ pub mod windows {
                         Ok(None)
                     }
                     Err(e) => {
+                        tracing::error!("AcquireNextFrame failed: {:?}", e);
                         Err(e.into())
                     }
                 }
@@ -210,7 +260,8 @@ pub mod windows {
 
     impl Drop for DxgiScreenCapture {
         fn drop(&mut self) {
-            let _ = self.stop();
+            self.capturing = false;
+            self.duplication = None;
         }
     }
 }
