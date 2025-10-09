@@ -13,5 +13,5 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 crossbeam-channel = "0.5"
 parking_lot = "0.12"
 dirs = "5.0"
-toml = "0.8"
+toml = "0.9"
 async-trait = "0.1"
