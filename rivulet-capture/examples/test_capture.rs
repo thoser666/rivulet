@@ -1,6 +1,9 @@
+#[cfg(windows)]
 use rivulet_capture::{CaptureSource, DxgiScreenCapture};
+#[cfg(windows)]
 use std::time::Duration;
 
+#[cfg(windows)]
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
@@ -31,5 +34,11 @@ fn main() -> anyhow::Result<()> {
              frame_count, elapsed.as_secs_f64(), fps);
 
     capture.stop()?;
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn main() -> anyhow::Result<()> {
+    println!("This example is only supported on Windows (uses DXGI). Skipping.");
     Ok(())
 }
