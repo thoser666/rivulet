@@ -11,13 +11,15 @@ path = "src/main.rs"
 [dependencies]
 rivulet-core = { path = "../rivulet-core" }
 rivulet-obs-compat = { path = "../rivulet-obs-compat" }
+rivulet-capture = { path = "../rivulet-capture" }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-eframe = "0.32.3"
+eframe = "0.32"
 egui = "0.32"
 egui_extras = "0.32"
-rfd = "0.15"
+rfd = "0.14"
 poll-promise = "0.3"
 chrono = "0.4"
+image = "0.25" # for PNG Export later
