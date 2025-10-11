@@ -3,6 +3,13 @@ use rivulet_capture::{CaptureSource, DxgiScreenCapture};
 #[cfg(windows)]
 use std::time::Duration;
 
+
+#[cfg(not(windows))]
+fn main() {
+    eprintln!("This example only works on Windows");
+    std::process::exit(1);
+}
+
 #[cfg(windows)]
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
