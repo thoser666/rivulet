@@ -10,13 +10,10 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
 crossbeam-channel = "0.5"
-
-# FFmpeg bindings mit static build
-[target.'cfg(windows)'.dependencies]
-ffmpeg-next = { version = "7.1", features = ["static"] }
-
-[target.'cfg(not(windows))'.dependencies]
 ffmpeg-next = "7.1"
 
 [build-dependencies]
-pkg-config = "0.3"
+vcpkg = "0.2"
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }
