@@ -10,10 +10,10 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
 crossbeam-channel = "0.5"
-ffmpeg-next = "7.1"
 
-[build-dependencies]
-vcpkg = "0.2"
+# Verwende FFmpeg als externes Binary (kein Linking!)
+ffmpeg-sidecar = "2.0"
+serde_json = "1.0"
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }
