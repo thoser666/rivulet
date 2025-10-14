@@ -1,29 +1,37 @@
-#[cfg(not(windows))]
-fn main() {
-    eprintln!("This example only works on Windows");
-    std::process::exit(1);
-}
+use rivulet_capture::{CaptureSource, XCapScreenCapture};
+use std::time::Duration;
 
-#[cfg(windows)]
 fn main() -> anyhow::Result<()> {
-    use rivulet_capture::{CaptureSource, DxgiScreenCapture};
-    use std::time::Duration;
-
     tracing_subscriber::fmt::init();
 
-    println!("Initializing screen capture...");
-    let mut capture = DxgiScreenCapture::new(0)?;
-    
+    println!("Listing available monitors...");
+    let monitors = XCapScreenCapture::list_monitors()?;
+    for monitor in &monitors {
+        println!(
+            "  [{}] {} - {}x{} at ({}, {}){}",
+            monitor.index,
+            monitor.name,
+            monitor.width,
+            monitor.height,
+            monitor.x,
+            monitor.y,
+            if monitor.is_primary { " (PRIMARY)" } else { "" }
+        );
+    }
+
+    println!("\nInitializing screen capture for primary monitor...");
+    let mut capture = XCapScreenCapture::new(0)?;
+
     let (width, height) = capture.dimensions();
-    println!("Initial dimensions: {}x{}", width, height);
+    println!("Capture resolution: {}x{}", width, height);
 
     capture.start()?;
-    println!("Capturing started. Capturing 300 frames (~10 seconds at 30fps)...");
+    println!("Capturing 90 frames (3 seconds at 30fps)...");
 
     let mut frame_count = 0;
     let start = std::time::Instant::now();
 
-    for i in 0..300 {
+    for i in 0..90 {
         match capture.capture_frame()? {
             Some(frame) => {
                 frame_count += 1;
@@ -38,7 +46,7 @@ fn main() -> anyhow::Result<()> {
                 }
             }
             None => {
-                // No new frame available
+                println!("No frame captured");
             }
         }
         std::thread::sleep(Duration::from_millis(33)); // ~30fps

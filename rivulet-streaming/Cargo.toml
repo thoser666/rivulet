@@ -2,18 +2,22 @@
 name = "rivulet-streaming"
 version = "0.1.0"
 edition = "2021"
-description = "Video encoding and streaming for Rivulet"
 
 [dependencies]
-rivulet-core = { path = "../rivulet-core" }
-anyhow = { workspace = true }
-tracing = { workspace = true }
-tokio = { workspace = true }
+anyhow = "1.0"
 crossbeam-channel = "0.5"
 
-# Verwende FFmpeg als externes Binary (kein Linking!)
-ffmpeg-sidecar = "2.0"
-serde_json = "1.0"
-
 [dev-dependencies]
-tracing-subscriber = { workspace = true }
+xcap = "0.0.9"
+
+[[example]]
+name = "test_encoder"
+path = "examples/test_encoder.rs"
+
+[[example]]
+name = "record_screen"
+path = "examples/record_screen.rs"
+
+[[example]]
+name = "list_monitors"
+path = "examples/list_monitors.rs"

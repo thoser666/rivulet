@@ -9,17 +9,32 @@ name = "rivulet"
 path = "src/main.rs"
 
 [dependencies]
+# Rivulet crates
 rivulet-core = { path = "../rivulet-core" }
 rivulet-obs-compat = { path = "../rivulet-obs-compat" }
 rivulet-capture = { path = "../rivulet-capture" }
+
+# Async runtime
 tokio = { workspace = true }
+
+# Error handling
 anyhow = { workspace = true }
+
+# Logging
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-eframe = "0.32"
-egui = "0.32"
-egui_extras = "0.32"
+
+# GUI
+eframe = "0.28"
+egui = "0.28"
+egui_extras = "0.28"
+
+# Utilities
 rfd = "0.14"
 poll-promise = "0.3"
 chrono = "0.4"
-image = "0.25" # for PNG Export later
+image = "0.25"
+
+# Screen capture (desktop only)
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+xcap = "0.0.9"

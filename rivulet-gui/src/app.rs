@@ -1,38 +1,34 @@
 use eframe::egui;
 use rivulet_core::*;
 
-#[cfg(windows)]
-use rivulet_capture::{CaptureSource, DxgiScreenCapture};
-
-#[cfg(windows)]
-use std::sync::{Arc, Mutex};
-
 use std::time::Instant;
 
+#[cfg(not(target_arch = "wasm32"))]
+use xcap::Monitor;
+
 pub struct RivuletApp {
-    #[cfg(windows)]
-    capture: Option<Arc<Mutex<DxgiScreenCapture>>>,
-    #[cfg(windows)]
+    #[cfg(not(target_arch = "wasm32"))]
+    monitor: Option<Monitor>,
+    #[cfg(not(target_arch = "wasm32"))]
     capture_active: bool,
-    #[cfg(windows)]
+    #[cfg(not(target_arch = "wasm32"))]
     current_frame: Option<CapturedFrameData>,
-    #[cfg(windows)]
+    #[cfg(not(target_arch = "wasm32"))]
     preview_texture: Option<egui::TextureHandle>,
 
-    #[cfg(windows)]
+    #[cfg(not(target_arch = "wasm32"))]
     fps: f32,
-    #[cfg(windows)]
+    #[cfg(not(target_arch = "wasm32"))]
     last_frame_time: Instant,
-    #[cfg(windows)]
+    #[cfg(not(target_arch = "wasm32"))]
     frame_count: u32,
 }
 
-#[cfg(windows)]
+#[cfg(not(target_arch = "wasm32"))]
 struct CapturedFrameData {
     data: Vec<u8>,
     width: u32,
     height: u32,
-    stride: u32,
 }
 
 impl RivuletApp {
@@ -42,58 +38,58 @@ impl RivuletApp {
         _rt: tokio::runtime::Runtime,
     ) -> Self {
         Self {
-            #[cfg(windows)]
-            capture: None,
-            #[cfg(windows)]
+            #[cfg(not(target_arch = "wasm32"))]
+            monitor: None,
+            #[cfg(not(target_arch = "wasm32"))]
             capture_active: false,
-            #[cfg(windows)]
+            #[cfg(not(target_arch = "wasm32"))]
             current_frame: None,
-            #[cfg(windows)]
+            #[cfg(not(target_arch = "wasm32"))]
             preview_texture: None,
-            #[cfg(windows)]
+            #[cfg(not(target_arch = "wasm32"))]
             fps: 0.0,
-            #[cfg(windows)]
+            #[cfg(not(target_arch = "wasm32"))]
             last_frame_time: Instant::now(),
-            #[cfg(windows)]
+            #[cfg(not(target_arch = "wasm32"))]
             frame_count: 0,
         }
     }
 
-    #[cfg(windows)]
+    #[cfg(not(target_arch = "wasm32"))]
     fn start_capture(&mut self) {
         tracing::info!("Starting screen capture from GUI");
 
-        match DxgiScreenCapture::new(0) {
-            Ok(mut capture_device) => {
-                if let Err(e) = capture_device.start() {
-                    tracing::error!("Failed to start capture: {}", e);
-                    return;
+        match Monitor::all() {
+            Ok(monitors) => {
+                if let Some(primary_monitor) = monitors.into_iter().find(|m| m.is_primary()) {
+                    tracing::info!(
+                        "Selected monitor: {} ({}x{})",
+                        primary_monitor.name(),
+                        primary_monitor.width(),
+                        primary_monitor.height()
+                    );
+
+                    self.monitor = Some(primary_monitor);
+                    self.capture_active = true;
+                    self.last_frame_time = Instant::now();
+                    self.frame_count = 0;
+
+                    tracing::info!("Capture started successfully");
+                } else {
+                    tracing::error!("No primary monitor found");
                 }
-
-                self.capture = Some(Arc::new(Mutex::new(capture_device)));
-                self.capture_active = true;
-                self.last_frame_time = Instant::now();
-                self.frame_count = 0;
-
-                tracing::info!("Capture started successfully");
             }
             Err(e) => {
-                tracing::error!("Failed to create capture device: {}", e);
+                tracing::error!("Failed to get monitors: {}", e);
             }
         }
     }
 
-    #[cfg(windows)]
+    #[cfg(not(target_arch = "wasm32"))]
     fn stop_capture(&mut self) {
         tracing::info!("Stopping screen capture");
 
-        if let Some(capture) = &self.capture {
-            if let Ok(mut cap) = capture.lock() {
-                let _ = cap.stop();
-            }
-        }
-
-        self.capture = None;
+        self.monitor = None;
         self.capture_active = false;
         self.current_frame = None;
         self.preview_texture = None;
@@ -101,28 +97,19 @@ impl RivuletApp {
         tracing::info!("Capture stopped");
     }
 
-    #[cfg(windows)]
+    #[cfg(not(target_arch = "wasm32"))]
     fn update_capture(&mut self, ctx: &egui::Context) {
         if !self.capture_active {
             return;
         }
 
-        let capture = match &self.capture {
-            Some(c) => c.clone(),
+        let monitor = match &self.monitor {
+            Some(m) => m,
             None => return,
         };
 
-        let frame_result = {
-            let mut cap = match capture.lock() {
-                Ok(guard) => guard,
-                Err(_) => return,
-            };
-
-            cap.capture_frame()
-        };
-
-        match frame_result {
-            Ok(Some(frame)) => {
+        match monitor.capture_image() {
+            Ok(image) => {
                 self.frame_count += 1;
                 let now = Instant::now();
                 let elapsed = now.duration_since(self.last_frame_time).as_secs_f32();
@@ -133,16 +120,25 @@ impl RivuletApp {
                     self.last_frame_time = now;
                 }
 
+                // xcap gibt uns RGBA, wir konvertieren zu BGRA für Konsistenz
+                let rgba_data = image.as_raw();
+                let mut bgra_data = Vec::with_capacity(rgba_data.len());
+
+                for pixel in rgba_data.chunks_exact(4) {
+                    bgra_data.push(pixel[2]); // B
+                    bgra_data.push(pixel[1]); // G
+                    bgra_data.push(pixel[0]); // R
+                    bgra_data.push(pixel[3]); // A
+                }
+
                 self.current_frame = Some(CapturedFrameData {
-                    data: frame.data,
-                    width: frame.width,
-                    height: frame.height,
-                    stride: frame.stride,
+                    data: bgra_data,
+                    width: image.width(),
+                    height: image.height(),
                 });
 
                 ctx.request_repaint();
             }
-            Ok(None) => {}
             Err(e) => {
                 tracing::error!("Capture error: {}", e);
                 self.stop_capture();
@@ -150,28 +146,17 @@ impl RivuletApp {
         }
     }
 
-    #[cfg(windows)]
+    #[cfg(not(target_arch = "wasm32"))]
     fn render_preview(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if let Some(frame_data) = &self.current_frame {
-            let mut rgba_data = Vec::with_capacity((frame_data.width * frame_data.height * 4) as usize);
+            // Konvertiere BGRA zurück zu RGBA für egui
+            let mut rgba_data = Vec::with_capacity(frame_data.data.len());
 
-            for y in 0..frame_data.height {
-                let row_start = (y * frame_data.stride) as usize;
-                for x in 0..frame_data.width {
-                    let pixel_start = row_start + (x * 4) as usize;
-
-                    if pixel_start + 3 < frame_data.data.len() {
-                        let b = frame_data.data[pixel_start];
-                        let g = frame_data.data[pixel_start + 1];
-                        let r = frame_data.data[pixel_start + 2];
-                        let a = frame_data.data[pixel_start + 3];
-
-                        rgba_data.push(r);
-                        rgba_data.push(g);
-                        rgba_data.push(b);
-                        rgba_data.push(a);
-                    }
-                }
+            for pixel in frame_data.data.chunks_exact(4) {
+                rgba_data.push(pixel[2]); // R
+                rgba_data.push(pixel[1]); // G
+                rgba_data.push(pixel[0]); // B
+                rgba_data.push(pixel[3]); // A
             }
 
             let color_image = egui::ColorImage::from_rgba_unmultiplied(
@@ -211,7 +196,7 @@ impl RivuletApp {
 
 impl eframe::App for RivuletApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        #[cfg(windows)]
+        #[cfg(not(target_arch = "wasm32"))]
         self.update_capture(ctx);
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
@@ -220,7 +205,7 @@ impl eframe::App for RivuletApp {
 
                 ui.separator();
 
-                #[cfg(windows)]
+                #[cfg(not(target_arch = "wasm32"))]
                 {
                     if self.capture_active {
                         if ui.button("⏹ Stop Capture").clicked() {
@@ -234,9 +219,9 @@ impl eframe::App for RivuletApp {
                     }
                 }
 
-                #[cfg(not(windows))]
+                #[cfg(target_arch = "wasm32")]
                 {
-                    ui.label("Screen capture only available on Windows");
+                    ui.label("Screen capture not available in web version");
                 }
             });
         });
@@ -245,7 +230,7 @@ impl eframe::App for RivuletApp {
             ui.heading("Screen Capture Preview");
             ui.separator();
 
-            #[cfg(windows)]
+            #[cfg(not(target_arch = "wasm32"))]
             {
                 if self.capture_active {
                     self.render_preview(ctx, ui);
@@ -259,14 +244,13 @@ impl eframe::App for RivuletApp {
                 }
             }
 
-            #[cfg(not(windows))]
+            #[cfg(target_arch = "wasm32")]
             {
                 ui.vertical_centered(|ui| {
                     ui.add_space(100.0);
                     ui.heading("Platform Not Supported");
                     ui.add_space(20.0);
-                    ui.label("Screen capture is currently only available on Windows");
-                    ui.label("Linux and macOS support coming soon!");
+                    ui.label("Screen capture is not available in the web version");
                 });
             }
         });
