@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
 
 pub struct VideoEncoder {
     output_path: PathBuf,
@@ -8,7 +10,7 @@ pub struct VideoEncoder {
     fps: u32,
     bitrate: u64,
     frame_count: u64,
-    // TODO: FFmpeg encoder context hier hinzufügen
+    ffmpeg_process: Option<Child>,
 }
 
 impl VideoEncoder {
@@ -33,8 +35,25 @@ impl VideoEncoder {
         println!("  FPS: {}", fps);
         println!("  Bitrate: {} bps", bitrate);
 
-        // TODO: Initialisiere FFmpeg encoder hier
-        // Beispiel mit ffmpeg-next oder gstreamer
+        // Starte FFmpeg Prozess
+        let ffmpeg = Command::new("ffmpeg")
+            .args(&[
+                "-y", // Überschreibe Output-Datei
+                "-f", "rawvideo",
+                "-pixel_format", "bgra", // BGRA format (wie Windows DXGI)
+                "-video_size", &format!("{}x{}", width, height),
+                "-framerate", &fps.to_string(),
+                "-i", "pipe:0", // Lese von stdin
+                "-c:v", "libx264", // H264 Codec
+                "-preset", "fast", // Encoding-Geschwindigkeit
+                "-pix_fmt", "yuv420p", // Kompatibel mit meisten Playern
+                "-b:v", &bitrate.to_string(),
+                output_path.to_str().context("Invalid output path")?,
+            ])
+            .stdin(Stdio::piped())
+            .stderr(Stdio::inherit()) // Zeige FFmpeg Fehler
+            .spawn()
+            .context("Failed to start ffmpeg. Is it installed?")?;
 
         Ok(Self {
             output_path: output_path.to_path_buf(),
@@ -43,6 +62,7 @@ impl VideoEncoder {
             fps,
             bitrate,
             frame_count: 0,
+            ffmpeg_process: Some(ffmpeg),
         })
     }
 
@@ -57,7 +77,10 @@ impl VideoEncoder {
         if width != self.width || height != self.height {
             anyhow::bail!(
                 "Frame dimensions {}x{} don't match encoder {}x{}",
-                width, height, self.width, self.height
+                width,
+                height,
+                self.width,
+                self.height
             );
         }
 
@@ -70,25 +93,69 @@ impl VideoEncoder {
             );
         }
 
-        // TODO: Encode frame mit FFmpeg
-        // Für jetzt nur zählen
-        self.frame_count += 1;
+        // Schreibe Frame zu FFmpeg stdin
+        if let Some(process) = &mut self.ffmpeg_process {
+            if let Some(stdin) = process.stdin.as_mut() {
+                // Wenn stride == width * 4, können wir direkt schreiben
+                if stride == width * 4 {
+                    stdin
+                        .write_all(frame_data)
+                        .context("Failed to write frame to ffmpeg")?;
+                } else {
+                    // Sonst müssen wir Zeile für Zeile kopieren (ohne padding)
+                    let row_size = (width * 4) as usize;
+                    for y in 0..height as usize {
+                        let start = y * stride as usize;
+                        let end = start + row_size;
+                        stdin
+                            .write_all(&frame_data[start..end])
+                            .context("Failed to write frame row to ffmpeg")?;
+                    }
+                }
+
+                self.frame_count += 1;
+            } else {
+                anyhow::bail!("FFmpeg stdin not available");
+            }
+        } else {
+            anyhow::bail!("FFmpeg process not running");
+        }
 
         Ok(())
     }
 
-    pub fn finish(self) -> Result<()> {
+    pub fn finish(mut self) -> Result<()> {
         println!("Finalizing video...");
         println!("  Total frames: {}", self.frame_count);
         println!("  Duration: {:.2}s", self.frame_count as f64 / self.fps as f64);
 
-        // TODO: Schließe FFmpeg encoder und schreibe Datei
+        if let Some(mut process) = self.ffmpeg_process.take() {
+            // Schließe stdin um FFmpeg zu signalisieren, dass wir fertig sind
+            drop(process.stdin.take());
 
-        println!("Video saved to: {:?}", self.output_path);
+            // Warte auf FFmpeg
+            let status = process.wait().context("Failed to wait for ffmpeg")?;
+
+            if !status.success() {
+                anyhow::bail!("FFmpeg exited with error: {}", status);
+            }
+        }
+
+        println!("✅ Video saved to: {:?}", self.output_path);
         Ok(())
     }
 
     pub fn frame_count(&self) -> u64 {
         self.frame_count
+    }
+}
+
+impl Drop for VideoEncoder {
+    fn drop(&mut self) {
+        // Cleanup: Beende FFmpeg falls noch aktiv
+        if let Some(mut process) = self.ffmpeg_process.take() {
+            let _ = process.stdin.take(); // Schließe stdin
+            let _ = process.wait(); // Warte auf Prozess
+        }
     }
 }

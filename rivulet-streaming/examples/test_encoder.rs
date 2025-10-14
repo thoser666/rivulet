@@ -2,8 +2,6 @@ use rivulet_streaming::VideoEncoder;
 use std::path::PathBuf;
 
 fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
-
     println!("Testing FFmpeg encoder...");
 
     // Create a simple test frame (red screen)
@@ -12,14 +10,8 @@ fn main() -> anyhow::Result<()> {
     let stride = width * 4;
 
     let mut frame_data = vec![0u8; (stride * height) as usize];
-    for pixel in frame_data.chunks_mut(4) {
-        pixel[0] = 0;   // B
-        pixel[1] = 0;   // G
-        pixel[2] = 255; // R (red)
-        pixel[3] = 255; // A
-    }
 
-    // Create encoder
+    // Encoder erstellen
     let mut encoder = VideoEncoder::new(
         &PathBuf::from("test_output.mp4"),
         width,
@@ -32,9 +24,24 @@ fn main() -> anyhow::Result<()> {
 
     // Encode 90 frames (3 seconds at 30fps)
     for i in 0..90 {
+        // Wechsle Farben: Rot -> Grün -> Blau
+        let color = match (i / 30) % 3 {
+            0 => (255, 0, 0),   // Rot
+            1 => (0, 255, 0),   // Grün
+            _ => (0, 0, 255),   // Blau
+        };
+
+        for pixel in frame_data.chunks_mut(4) {
+            pixel[0] = color.2; // B
+            pixel[1] = color.1; // G
+            pixel[2] = color.0; // R
+            pixel[3] = 255;     // A
+        }
+
         encoder.encode_frame(&frame_data, width, height, stride)?;
-        if i % 30 == 0 {
-            println!("Encoded {} frames", i);
+
+        if (i + 1) % 30 == 0 {
+            println!("Encoded {} frames", i + 1);
         }
     }
 
