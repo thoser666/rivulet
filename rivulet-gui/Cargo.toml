@@ -3,6 +3,7 @@ name = "rivulet-gui"
 version = "0.1.0"
 edition = "2021"
 description = "GUI application for Rivulet streaming software"
+build = "build.rs"
 
 [[bin]]
 name = "rivulet"
@@ -13,6 +14,7 @@ path = "src/main.rs"
 rivulet-core = { path = "../rivulet-core" }
 rivulet-obs-compat = { path = "../rivulet-obs-compat" }
 rivulet-capture = { path = "../rivulet-capture" }
+rivulet-streaming = { path = "../rivulet-streaming" }
 
 # Async runtime
 tokio = { workspace = true }
@@ -33,8 +35,14 @@ egui_extras = "0.28"
 rfd = "0.14"
 poll-promise = "0.3"
 chrono = "0.4"
-image = "0.25"
+image = "0.25"  # Für Icon-Loading
+dirs = "5.0"
 
 # Screen capture (desktop only)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 xcap = "0.0.9"
+
+[build-dependencies]
+# Windows Icon für .exe
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"

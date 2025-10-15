@@ -1,6 +1,10 @@
 use eframe::egui;
 use rivulet_core::*;
+use rivulet_streaming::VideoEncoder;
 
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::Instant;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -12,16 +16,27 @@ pub struct RivuletApp {
     #[cfg(not(target_arch = "wasm32"))]
     capture_active: bool,
     #[cfg(not(target_arch = "wasm32"))]
+    recording_active: bool,
+    #[cfg(not(target_arch = "wasm32"))]
     current_frame: Option<CapturedFrameData>,
     #[cfg(not(target_arch = "wasm32"))]
     preview_texture: Option<egui::TextureHandle>,
-
+    #[cfg(not(target_arch = "wasm32"))]
+    encoder: Option<Arc<Mutex<VideoEncoder>>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    recording_thread: Option<thread::JoinHandle<()>>,
     #[cfg(not(target_arch = "wasm32"))]
     fps: f32,
     #[cfg(not(target_arch = "wasm32"))]
     last_frame_time: Instant,
     #[cfg(not(target_arch = "wasm32"))]
     frame_count: u32,
+    #[cfg(not(target_arch = "wasm32"))]
+    output_path: String,
+    #[cfg(not(target_arch = "wasm32"))]
+    recording_fps: u32,
+    #[cfg(not(target_arch = "wasm32"))]
+    bitrate: u64,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -43,21 +58,53 @@ impl RivuletApp {
             #[cfg(not(target_arch = "wasm32"))]
             capture_active: false,
             #[cfg(not(target_arch = "wasm32"))]
+            recording_active: false,
+            #[cfg(not(target_arch = "wasm32"))]
             current_frame: None,
             #[cfg(not(target_arch = "wasm32"))]
             preview_texture: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            encoder: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            recording_thread: None,
             #[cfg(not(target_arch = "wasm32"))]
             fps: 0.0,
             #[cfg(not(target_arch = "wasm32"))]
             last_frame_time: Instant::now(),
             #[cfg(not(target_arch = "wasm32"))]
             frame_count: 0,
+            #[cfg(not(target_arch = "wasm32"))]
+            output_path: Self::get_default_output_path(),
+            #[cfg(not(target_arch = "wasm32"))]
+            recording_fps: 30,
+            #[cfg(not(target_arch = "wasm32"))]
+            bitrate: 8_000_000,
         }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn start_capture(&mut self) {
-        tracing::info!("Starting screen capture from GUI");
+    fn get_default_output_path() -> String {
+        let videos_dir = if cfg!(windows) {
+            dirs::video_dir()
+        } else if cfg!(target_os = "macos") {
+            dirs::home_dir().map(|p| p.join("Movies"))
+        } else {
+            dirs::video_dir()
+        };
+
+        if let Some(dir) = videos_dir {
+            let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+            dir.join(format!("rivulet_{}.mp4", timestamp))
+                .to_string_lossy()
+                .to_string()
+        } else {
+            format!("rivulet_recording.mp4")
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn start_preview(&mut self) {
+        tracing::info!("Starting preview");
 
         match Monitor::all() {
             Ok(monitors) => {
@@ -73,8 +120,6 @@ impl RivuletApp {
                     self.capture_active = true;
                     self.last_frame_time = Instant::now();
                     self.frame_count = 0;
-
-                    tracing::info!("Capture started successfully");
                 } else {
                     tracing::error!("No primary monitor found");
                 }
@@ -86,15 +131,63 @@ impl RivuletApp {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn stop_capture(&mut self) {
-        tracing::info!("Stopping screen capture");
-
+    fn stop_preview(&mut self) {
+        tracing::info!("Stopping preview");
         self.monitor = None;
         self.capture_active = false;
         self.current_frame = None;
         self.preview_texture = None;
+    }
 
-        tracing::info!("Capture stopped");
+    #[cfg(not(target_arch = "wasm32"))]
+    fn start_recording(&mut self) {
+        tracing::info!("Starting recording");
+
+        let monitor = match &self.monitor {
+            Some(m) => m,
+            None => {
+                tracing::error!("No monitor selected");
+                return;
+            }
+        };
+
+        let width = monitor.width();
+        let height = monitor.height();
+
+        match VideoEncoder::new(
+            &PathBuf::from(&self.output_path),
+            width,
+            height,
+            self.recording_fps,
+            self.bitrate,
+        ) {
+            Ok(encoder) => {
+                self.encoder = Some(Arc::new(Mutex::new(encoder)));
+                self.recording_active = true;
+                tracing::info!("Recording started: {}", self.output_path);
+            }
+            Err(e) => {
+                tracing::error!("Failed to create encoder: {}", e);
+            }
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn stop_recording(&mut self) {
+        tracing::info!("Stopping recording");
+        self.recording_active = false;
+
+        if let Some(encoder) = self.encoder.take() {
+            thread::spawn(move || {
+                if let Ok(enc) = Arc::try_unwrap(encoder) {
+                    if let Ok(encoder) = enc.into_inner() {
+                        if let Err(e) = encoder.finish() {
+                            tracing::error!("Failed to finish encoding: {}", e);
+                        }
+                    }
+                }
+            });
+        }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -120,7 +213,6 @@ impl RivuletApp {
                     self.last_frame_time = now;
                 }
 
-                // xcap gibt uns RGBA, wir konvertieren zu BGRA für Konsistenz
                 let rgba_data = image.as_raw();
                 let mut bgra_data = Vec::with_capacity(rgba_data.len());
 
@@ -129,6 +221,21 @@ impl RivuletApp {
                     bgra_data.push(pixel[1]); // G
                     bgra_data.push(pixel[0]); // R
                     bgra_data.push(pixel[3]); // A
+                }
+
+                if self.recording_active {
+                    if let Some(encoder) = &self.encoder {
+                        let encoder = encoder.clone();
+                        let frame_data = bgra_data.clone();
+                        let width = image.width();
+                        let height = image.height();
+
+                        thread::spawn(move || {
+                            if let Ok(mut enc) = encoder.lock() {
+                                let _ = enc.encode_frame(&frame_data, width, height, width * 4);
+                            }
+                        });
+                    }
                 }
 
                 self.current_frame = Some(CapturedFrameData {
@@ -141,7 +248,7 @@ impl RivuletApp {
             }
             Err(e) => {
                 tracing::error!("Capture error: {}", e);
-                self.stop_capture();
+                self.stop_preview();
             }
         }
     }
@@ -149,7 +256,6 @@ impl RivuletApp {
     #[cfg(not(target_arch = "wasm32"))]
     fn render_preview(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if let Some(frame_data) = &self.current_frame {
-            // Konvertiere BGRA zurück zu RGBA für egui
             let mut rgba_data = Vec::with_capacity(frame_data.data.len());
 
             for pixel in frame_data.data.chunks_exact(4) {
@@ -164,7 +270,6 @@ impl RivuletApp {
                 &rgba_data,
             );
 
-            // Get or create texture
             let texture = self.preview_texture.get_or_insert_with(|| {
                 ctx.load_texture(
                     "screen_preview",
@@ -173,21 +278,26 @@ impl RivuletApp {
                 )
             });
 
-            // Update texture
             texture.set(color_image, egui::TextureOptions::default());
 
             let available_size = ui.available_size();
             let aspect_ratio = frame_data.width as f32 / frame_data.height as f32;
-
             let preview_width = available_size.x.min(800.0);
             let preview_height = preview_width / aspect_ratio;
-
             let preview_size = egui::vec2(preview_width, preview_height);
 
             ui.image((texture.id(), preview_size));
 
-            ui.label(format!("Resolution: {}x{}", frame_data.width, frame_data.height));
-            ui.label(format!("FPS: {:.1}", self.fps));
+            ui.horizontal(|ui| {
+                ui.label(format!("Resolution: {}x{}", frame_data.width, frame_data.height));
+                ui.separator();
+                ui.label(format!("FPS: {:.1}", self.fps));
+
+                if self.recording_active {
+                    ui.separator();
+                    ui.colored_label(egui::Color32::RED, "● RECORDING");
+                }
+            });
         } else {
             ui.label("No frame captured yet...");
         }
@@ -201,35 +311,115 @@ impl eframe::App for RivuletApp {
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.heading("🌊 Rivulet");
+                ui.heading("🌊 Rivulet v0.1");
 
                 ui.separator();
 
                 #[cfg(not(target_arch = "wasm32"))]
                 {
                     if self.capture_active {
-                        if ui.button("⏹ Stop Capture").clicked() {
-                            self.stop_capture();
+                        if ui.button("⏹ Stop Preview").clicked() {
+                            if self.recording_active {
+                                self.stop_recording();
+                            }
+                            self.stop_preview();
                         }
-                        ui.colored_label(egui::Color32::GREEN, "● CAPTURING");
+                        ui.colored_label(egui::Color32::GREEN, "● PREVIEW");
                     } else {
-                        if ui.button("⏺ Start Capture").clicked() {
-                            self.start_capture();
+                        if ui.button("▶ Start Preview").clicked() {
+                            self.start_preview();
                         }
                     }
-                }
 
-                #[cfg(target_arch = "wasm32")]
-                {
-                    ui.label("Screen capture not available in web version");
+                    ui.separator();
+
+                    if self.capture_active {
+                        if self.recording_active {
+                            if ui.button("⏹ Stop Recording").clicked() {
+                                self.stop_recording();
+                            }
+                            ui.colored_label(egui::Color32::RED, "● REC");
+                        } else {
+                            if ui.button("⏺ Start Recording").clicked() {
+                                self.start_recording();
+                            }
+                        }
+                    }
                 }
             });
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Screen Capture Preview");
+        egui::SidePanel::left("settings_panel").show(ctx, |ui| {
+            ui.heading("⚙️ Settings");
             ui.separator();
 
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                ui.label("Output File:");
+
+                let display_path = if self.output_path.len() > 35 {
+                    let path = std::path::Path::new(&self.output_path);
+                    format!("...{}",
+                            path.file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("unknown")
+                    )
+                } else {
+                    self.output_path.clone()
+                };
+
+                ui.label(&display_path);
+
+                ui.horizontal(|ui| {
+                    if ui.button("📁 Browse...").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .set_file_name(&format!(
+                                "rivulet_{}.mp4",
+                                chrono::Local::now().format("%Y%m%d_%H%M%S")
+                            ))
+                            .add_filter("MP4 Video", &["mp4"])
+                            .save_file()
+                        {
+                            self.output_path = path.to_string_lossy().to_string();
+                        }
+                    }
+
+                    if ui.button("🔄 Reset").clicked() {
+                        self.output_path = Self::get_default_output_path();
+                    }
+                });
+
+                ui.label("📍 Save location:")
+                    .on_hover_text(&self.output_path);
+
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(10.0);
+
+                ui.label("FPS:");
+                ui.add(egui::Slider::new(&mut self.recording_fps, 15..=60));
+
+                ui.add_space(10.0);
+
+                ui.label("Bitrate (Mbps):");
+                let mut bitrate_mbps = (self.bitrate / 1_000_000) as u32;
+                if ui.add(egui::Slider::new(&mut bitrate_mbps, 1..=50)).changed() {
+                    self.bitrate = bitrate_mbps as u64 * 1_000_000;
+                }
+
+                ui.add_space(20.0);
+                ui.separator();
+
+                ui.label("📊 Current Settings:");
+                ui.label(format!("  FPS: {}", self.recording_fps));
+                ui.label(format!("  Bitrate: {} Mbps", bitrate_mbps));
+
+                let estimated_size_mb_per_min = (self.bitrate * 60) / (8 * 1_000_000);
+                ui.label(format!("  ~{} MB/min", estimated_size_mb_per_min));
+            }
+        });
+
+        egui::CentralPanel::default().show(ctx, |ui| {
             #[cfg(not(target_arch = "wasm32"))]
             {
                 if self.capture_active {
@@ -237,9 +427,16 @@ impl eframe::App for RivuletApp {
                 } else {
                     ui.vertical_centered(|ui| {
                         ui.add_space(100.0);
-                        ui.heading("Click 'Start Capture' to begin");
+                        ui.heading("Click 'Start Preview' to begin");
                         ui.add_space(20.0);
-                        ui.label("Your screen will be captured and displayed here in real-time");
+                        ui.label("Your screen will be captured and displayed here");
+                        ui.add_space(10.0);
+                        ui.label(format!("📁 Will save to: {}",
+                                         std::path::Path::new(&self.output_path)
+                                             .file_name()
+                                             .and_then(|n| n.to_str())
+                                             .unwrap_or(&self.output_path)
+                        ));
                     });
                 }
             }
