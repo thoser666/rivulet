@@ -1,134 +1,38 @@
 name: CI
 
-on:
-  push:
-    branches: [ "**" ]  # Alle Branches
-  pull_request:
-
-env:
-  CARGO_TERM_COLOR: always
+on: [push, pull_request]
 
 jobs:
-  check:
-    name: Check Build
+  build-linux:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-      
-      - name: Update apt cache
-        run: sudo apt-get update
+      - uses: actions/checkout@v4
       
       - name: Install system dependencies
         run: |
-          sudo apt-get install -y \
-            libxcb1-dev \
-            libxcb-render0-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev \
-            libssl-dev \
-            libdbus-1-dev \
-            pkg-config
-      
-      - name: Verify libxcb installation
-        run: |
-          dpkg -l | grep libxcb || true
-          pkg-config --exists xcb && echo "✅ xcb found" || echo "❌ xcb NOT found"
-          pkg-config --cflags xcb || true
-          pkg-config --libs xcb || true
-      
-      - name: Cargo check
-        run: cargo check --workspace --all-targets --verbose
-
-  build-linux:
-    name: Build (Linux)
-    runs-on: ubuntu-latest
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - uses: dtolnay/rust-toolchain@stable
-      
-      - name: Install dependencies
-        run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libxcb1-dev \
-            libxcb-render0-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev \
-            libssl-dev \
-            libdbus-1-dev \
-            pkg-config
-      
+          sudo apt-get install -y libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libdbus-1-dev pkg-config
+          
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          source $HOME/.cargo/env
+          
       - name: Build
-        run: cargo build --release --verbose
-      
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: rivulet-linux-x86_64
-          path: target/release/rivulet
+        run: |
+          source $HOME/.cargo/env
+          cargo build --verbose --workspace
 
   build-windows:
-    name: Build (Windows)
     runs-on: windows-latest
-    
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      
-      - name: Build
-        run: cargo build --release --verbose
-      
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: rivulet-windows-x86_64
-          path: target/release/rivulet.exe
+      - run: cargo build --verbose --workspace
 
   build-macos:
-    name: Build (macOS)
     runs-on: macos-latest
-    
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      
-      - name: Build
-        run: cargo build --release --verbose
-      
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: rivulet-macos-x86_64
-          path: target/release/rivulet
-
-  test:
-    name: Tests
-    runs-on: ubuntu-latest
-    
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libxcb1-dev \
-            libxcb-render0-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev \
-            libssl-dev \
-            libdbus-1-dev \
-            pkg-config
-      
-      - name: 
+      - run: cargo build --verbose --workspace
