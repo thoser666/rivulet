@@ -1,16 +1,16 @@
-use std::sync::Arc;
 use parking_lot::RwLock;
+use std::sync::Arc;
 use uuid::Uuid;
 
+pub mod config;
+pub mod output;
 pub mod scene;
 pub mod source;
-pub mod output;
-pub mod config;
 
+pub use config::*;
+pub use output::*;
 pub use scene::*;
 pub use source::*;
-pub use output::*;
-pub use config::*;
 
 /// The main Rivulet engine that manages scenes, sources, and outputs
 #[derive(Debug)]

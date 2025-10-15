@@ -8,6 +8,9 @@ pub struct Source {
 
 impl Source {
     pub fn new(name: String) -> Self {
-        Self { id: Uuid::new_v4(), name }
+        Self {
+            id: Uuid::new_v4(),
+            name,
+        }
     }
 }

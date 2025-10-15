@@ -1,6 +1,6 @@
+use crate::{CaptureSource, CapturedFrame};
 use anyhow::{Context, Result};
 use xcap::Monitor;
-use crate::{CaptureSource, CapturedFrame};
 
 pub struct XCapScreenCapture {
     monitor: Monitor,
@@ -11,7 +11,10 @@ pub struct XCapScreenCapture {
 
 impl XCapScreenCapture {
     pub fn new(display_index: u32) -> Result<Self> {
-        tracing::info!("Initializing xcap screen capture for display {}", display_index);
+        tracing::info!(
+            "Initializing xcap screen capture for display {}",
+            display_index
+        );
 
         let monitors = Monitor::all().context("Failed to get monitors")?;
 
@@ -83,7 +86,8 @@ impl CaptureSource for XCapScreenCapture {
         }
 
         // Capture screenshot
-        let image = self.monitor
+        let image = self
+            .monitor
             .capture_image()
             .context("Failed to capture screen")?;
 
@@ -92,12 +96,7 @@ impl CaptureSource for XCapScreenCapture {
         let rgba_data = image.into_raw();
         let stride = width * 4;
 
-        let frame = CapturedFrame::new(
-            rgba_data,
-            width,
-            height,
-            stride,
-        );
+        let frame = CapturedFrame::new(rgba_data, width, height, stride);
 
         Ok(Some(frame))
     }

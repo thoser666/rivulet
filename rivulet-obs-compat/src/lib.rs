@@ -1,13 +1,13 @@
+use libloading::Library;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use libloading::Library;
 
-pub mod plugin;
 pub mod api;
+pub mod plugin;
 pub mod types;
 
-pub use plugin::*;
 pub use api::*;
+pub use plugin::*;
 pub use types::*;
 
 /// Plugin Manager - handles OBS plugin loading

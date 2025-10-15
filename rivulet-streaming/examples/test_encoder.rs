@@ -26,16 +26,16 @@ fn main() -> anyhow::Result<()> {
     for i in 0..90 {
         // Wechsle Farben: Rot -> Grün -> Blau
         let color = match (i / 30) % 3 {
-            0 => (255, 0, 0),   // Rot
-            1 => (0, 255, 0),   // Grün
-            _ => (0, 0, 255),   // Blau
+            0 => (255, 0, 0), // Rot
+            1 => (0, 255, 0), // Grün
+            _ => (0, 0, 255), // Blau
         };
 
         for pixel in frame_data.chunks_mut(4) {
             pixel[0] = color.2; // B
             pixel[1] = color.1; // G
             pixel[2] = color.0; // R
-            pixel[3] = 255;     // A
+            pixel[3] = 255; // A
         }
 
         encoder.encode_frame(&frame_data, width, height, stride)?;

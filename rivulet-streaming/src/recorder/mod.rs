@@ -1,9 +1,12 @@
 use anyhow::{Context, Result};
-use crossbeam_channel::{bounded, Sender, Receiver};
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use crossbeam_channel::{bounded, Receiver, Sender};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::thread::{self, JoinHandle};
 
-use crate::{EncodableFrame, RecordingSettings, Encoder};
+use crate::{EncodableFrame, Encoder, RecordingSettings};
 
 pub struct Recorder {
     settings: RecordingSettings,
@@ -34,9 +37,7 @@ impl Recorder {
         let is_recording = Arc::clone(&self.is_recording);
 
         // Encoder-Thread starten
-        let handle = thread::spawn(move || {
-            Self::encoder_thread_fn(rx, settings, is_recording)
-        });
+        let handle = thread::spawn(move || Self::encoder_thread_fn(rx, settings, is_recording));
 
         self.encoder_thread = Some(handle);
         self.is_recording.store(true, Ordering::SeqCst);
@@ -47,7 +48,9 @@ impl Recorder {
 
     pub fn send_frame(&self, frame: EncodableFrame) -> Result<()> {
         if let Some(sender) = &self.frame_sender {
-            sender.send(frame).context("Failed to send frame to encoder")?;
+            sender
+                .send(frame)
+                .context("Failed to send frame to encoder")?;
         }
         Ok(())
     }
@@ -64,7 +67,8 @@ impl Recorder {
 
         // Auf Encoder-Thread warten
         if let Some(handle) = self.encoder_thread.take() {
-            handle.join()
+            handle
+                .join()
                 .map_err(|_| anyhow::anyhow!("Encoder thread panicked"))??;
         }
 

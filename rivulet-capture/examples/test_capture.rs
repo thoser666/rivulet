@@ -55,7 +55,11 @@ fn main() -> anyhow::Result<()> {
     let elapsed = start.elapsed();
     let fps = frame_count as f64 / elapsed.as_secs_f64();
     println!("\n=== Results ===");
-    println!("Captured {} frames in {:.2}s", frame_count, elapsed.as_secs_f64());
+    println!(
+        "Captured {} frames in {:.2}s",
+        frame_count,
+        elapsed.as_secs_f64()
+    );
     println!("Average FPS: {:.2}", fps);
 
     capture.stop()?;

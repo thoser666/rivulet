@@ -39,15 +39,24 @@ impl VideoEncoder {
         let ffmpeg = Command::new("ffmpeg")
             .args(&[
                 "-y", // Überschreibe Output-Datei
-                "-f", "rawvideo",
-                "-pixel_format", "bgra", // BGRA format (wie Windows DXGI)
-                "-video_size", &format!("{}x{}", width, height),
-                "-framerate", &fps.to_string(),
-                "-i", "pipe:0", // Lese von stdin
-                "-c:v", "libx264", // H264 Codec
-                "-preset", "fast", // Encoding-Geschwindigkeit
-                "-pix_fmt", "yuv420p", // Kompatibel mit meisten Playern
-                "-b:v", &bitrate.to_string(),
+                "-f",
+                "rawvideo",
+                "-pixel_format",
+                "bgra", // BGRA format (wie Windows DXGI)
+                "-video_size",
+                &format!("{}x{}", width, height),
+                "-framerate",
+                &fps.to_string(),
+                "-i",
+                "pipe:0", // Lese von stdin
+                "-c:v",
+                "libx264", // H264 Codec
+                "-preset",
+                "fast", // Encoding-Geschwindigkeit
+                "-pix_fmt",
+                "yuv420p", // Kompatibel mit meisten Playern
+                "-b:v",
+                &bitrate.to_string(),
                 output_path.to_str().context("Invalid output path")?,
             ])
             .stdin(Stdio::piped())
@@ -127,7 +136,10 @@ impl VideoEncoder {
     pub fn finish(mut self) -> Result<()> {
         println!("Finalizing video...");
         println!("  Total frames: {}", self.frame_count);
-        println!("  Duration: {:.2}s", self.frame_count as f64 / self.fps as f64);
+        println!(
+            "  Duration: {:.2}s",
+            self.frame_count as f64 / self.fps as f64
+        );
 
         if let Some(mut process) = self.ffmpeg_process.take() {
             // Schließe stdin um FFmpeg zu signalisieren, dass wir fertig sind

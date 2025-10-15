@@ -1,5 +1,5 @@
-use anyhow::{Context, Result};
 use crate::{EncodableFrame, RecordingSettings};
+use anyhow::{Context, Result};
 
 mod video;
 pub use video::VideoEncoder;
@@ -33,7 +33,10 @@ impl Encoder {
     }
 
     pub fn finalize(&mut self) -> Result<()> {
-        println!("Encoded {} frames to {:?}", self.frame_count, self.settings.output_path);
+        println!(
+            "Encoded {} frames to {:?}",
+            self.frame_count, self.settings.output_path
+        );
         Ok(())
     }
 

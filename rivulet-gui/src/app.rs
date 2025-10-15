@@ -426,17 +426,17 @@ impl RivuletApp {
             ui.label("Output File:");
             let display_path = if self.output_path.len() > 50 {
                 let path = std::path::Path::new(&self.output_path);
-                format!("...{}",
-                        path.file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("unknown")
+                format!(
+                    "...{}",
+                    path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("unknown")
                 )
             } else {
                 self.output_path.clone()
             };
 
-            ui.label(&display_path)
-                .on_hover_text(&self.output_path);
+            ui.label(&display_path).on_hover_text(&self.output_path);
 
             ui.horizontal(|ui| {
                 if ui.button("📁 Browse...").clicked() {
@@ -472,7 +472,10 @@ impl RivuletApp {
 
             ui.label("Bitrate:");
             let mut bitrate_mbps = (self.bitrate / 1_000_000) as u32;
-            if ui.add(egui::Slider::new(&mut bitrate_mbps, 1..=50).suffix(" Mbps")).changed() {
+            if ui
+                .add(egui::Slider::new(&mut bitrate_mbps, 1..=50).suffix(" Mbps"))
+                .changed()
+            {
                 self.bitrate = bitrate_mbps as u64 * 1_000_000;
             }
         });
@@ -509,7 +512,7 @@ impl RivuletApp {
 
             ui.hyperlink_to(
                 "🌐 GitHub Repository",
-                "https://github.com/thoser666/rivulet"
+                "https://github.com/thoser666/rivulet",
             );
 
             ui.add_space(10.0);
@@ -539,29 +542,27 @@ impl eframe::App for RivuletApp {
         self.render_tab_bar(ctx);
 
         // Content area
-        egui::CentralPanel::default().show(ctx, |ui| {
-            match self.current_tab {
-                Tab::Record => {
-                    #[cfg(not(target_arch = "wasm32"))]
-                    self.render_record_tab(ctx, ui);
+        egui::CentralPanel::default().show(ctx, |ui| match self.current_tab {
+            Tab::Record => {
+                #[cfg(not(target_arch = "wasm32"))]
+                self.render_record_tab(ctx, ui);
 
-                    #[cfg(target_arch = "wasm32")]
-                    ui.centered_and_justified(|ui| {
-                        ui.label("Platform not supported");
-                    });
-                }
-                Tab::Settings => {
-                    #[cfg(not(target_arch = "wasm32"))]
-                    self.render_settings_tab(ui);
+                #[cfg(target_arch = "wasm32")]
+                ui.centered_and_justified(|ui| {
+                    ui.label("Platform not supported");
+                });
+            }
+            Tab::Settings => {
+                #[cfg(not(target_arch = "wasm32"))]
+                self.render_settings_tab(ui);
 
-                    #[cfg(target_arch = "wasm32")]
-                    ui.centered_and_justified(|ui| {
-                        ui.label("Platform not supported");
-                    });
-                }
-                Tab::About => {
-                    self.render_about_tab(ui);
-                }
+                #[cfg(target_arch = "wasm32")]
+                ui.centered_and_justified(|ui| {
+                    ui.label("Platform not supported");
+                });
+            }
+            Tab::About => {
+                self.render_about_tab(ui);
             }
         });
     }

@@ -11,18 +11,20 @@ fn main() -> anyhow::Result<()> {
     let monitors = Monitor::all()?;
 
     for (i, monitor) in monitors.iter().enumerate() {
-        println!("  [{}] {} - {}x{} @ ({}, {})",
-                 i,
-                 monitor.name(),
-                 monitor.width(),
-                 monitor.height(),
-                 monitor.x(),
-                 monitor.y()
+        println!(
+            "  [{}] {} - {}x{} @ ({}, {})",
+            i,
+            monitor.name(),
+            monitor.width(),
+            monitor.height(),
+            monitor.x(),
+            monitor.y()
         );
     }
 
     // Wähle primären Monitor
-    let monitor = monitors.into_iter()
+    let monitor = monitors
+        .into_iter()
         .find(|m| m.is_primary())
         .or_else(|| Monitor::all().ok()?.into_iter().next())
         .ok_or_else(|| anyhow::anyhow!("No monitor found"))?;
@@ -47,7 +49,10 @@ fn main() -> anyhow::Result<()> {
         8_000_000, // 8 Mbps
     )?;
 
-    println!("\n⏺️  Recording for {} seconds at {} FPS...", duration_secs, fps);
+    println!(
+        "\n⏺️  Recording for {} seconds at {} FPS...",
+        duration_secs, fps
+    );
     println!("   (Move your mouse around to see it in the recording!)\n");
 
     let start = Instant::now();
@@ -59,7 +64,8 @@ fn main() -> anyhow::Result<()> {
         let frame_start = Instant::now();
 
         // Capture frame
-        let image = monitor.capture_image()
+        let image = monitor
+            .capture_image()
             .map_err(|e| anyhow::anyhow!("Capture failed: {}", e))?;
 
         // xcap gibt uns ein image::RgbaImage
@@ -88,8 +94,10 @@ fn main() -> anyhow::Result<()> {
         if last_print.elapsed().as_secs() >= 1 {
             let elapsed = start.elapsed().as_secs_f32();
             let actual_fps = frame_count as f32 / elapsed;
-            println!("   {} frames ({:.1}s) - {:.1} FPS",
-                     frame_count, elapsed, actual_fps);
+            println!(
+                "   {} frames ({:.1}s) - {:.1} FPS",
+                frame_count, elapsed, actual_fps
+            );
             last_print = Instant::now();
         }
 
@@ -98,7 +106,10 @@ fn main() -> anyhow::Result<()> {
         if frame_time < frame_duration {
             std::thread::sleep(frame_duration - frame_time);
         } else if frame_time > frame_duration * 2 {
-            println!("   ⚠️  Warning: Encoding too slow! Frame took {:?}", frame_time);
+            println!(
+                "   ⚠️  Warning: Encoding too slow! Frame took {:?}",
+                frame_time
+            );
         }
     }
 
