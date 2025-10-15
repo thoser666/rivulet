@@ -4,6 +4,7 @@
 
 **Modern Screen Recording & Streaming Software**
 
+[![CI](https://github.com/thoser666/rivulet/workflows/CI/badge.svg)](https://github.com/thoser666/rivulet/actions)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
 [![Status](https://img.shields.io/badge/status-alpha%20v0.1-yellow.svg)](https://github.com/thoser666/rivulet)
@@ -45,10 +46,15 @@ Rivulet aims to be a **complete reimplementation of OBS Studio in Rust**, provid
 - **Screen Capture** - Capture your primary monitor in real-time
 - **Video Encoding** - H.264 encoding via FFmpeg
 - **Live Preview** - See what you're recording as you record
+- **Tab-Based Interface** - Clean, DaVinci Resolve-style UI
+  - Record Tab - Main recording controls and preview
+  - Settings Tab - All configuration options
+  - About Tab - Project information
 - **Customizable Settings**
   - Adjustable FPS (15-60)
   - Bitrate control (1-50 Mbps)
   - Custom output path with file picker
+  - Auto-timestamped filenames
 - **Cross-Platform** - Windows, macOS, and Linux support (via xcap)
 - **Modern UI** - Clean interface built with egui
 
@@ -99,6 +105,7 @@ See [Roadmap](#-roadmap) for detailed timeline.
 - [ ] Better error messages
 - [ ] Recording time display
 - [ ] FPS counter during recording
+- [ ] Estimated file size calculator
 
 **Goal:** Enable high-quality recording with audio for YouTube/Twitch content creators.
 
@@ -124,6 +131,7 @@ See [Roadmap](#-roadmap) for detailed timeline.
 - [ ] Codec selection UI (H264/H265/VP9)
 - [ ] Audio level visualizer
 - [ ] Preset management (1080p60, 720p30, etc.)
+- [ ] Export settings presets
 
 **Developer Experience**
 - [ ] Update check system
@@ -144,17 +152,20 @@ See [Roadmap](#-roadmap) for detailed timeline.
 - [ ] Stream health monitoring
 - [ ] Adaptive bitrate
 - [ ] Stream presets (Twitch, YouTube, Facebook)
+- [ ] Network statistics display
 
 **Advanced Features**
 - [ ] Dual output (record + stream simultaneously)
 - [ ] Basic overlays (text, images, webcam)
 - [ ] Scene management (basic)
 - [ ] Transition effects
+- [ ] Stream delay/buffer
 
 **Integrations**
 - [ ] Twitch integration (OAuth, chat)
 - [ ] YouTube Live integration
 - [ ] Custom RTMP server support
+- [ ] Stream key management
 
 **Goal:** Enable live streaming to major platforms.
 
@@ -171,6 +182,7 @@ See [Roadmap](#-roadmap) for detailed timeline.
 - [ ] Audio filters (noise suppression, compressor)
 - [ ] Multi-track audio export
 - [ ] Replay buffer
+- [ ] Instant replay
 
 **Production Ready**
 - [ ] Auto-update system
@@ -178,12 +190,14 @@ See [Roadmap](#-roadmap) for detailed timeline.
 - [ ] Complete documentation
 - [ ] Video tutorials
 - [ ] Community Discord/Forum
+- [ ] Support ticketing system
 
 **Polish**
 - [ ] Installer (Windows MSI, macOS DMG, Linux AppImage)
 - [ ] Code signing (Windows/macOS)
 - [ ] Telemetry (opt-in, privacy-first)
 - [ ] Marketing website
+- [ ] Press kit
 
 **Goal:** Public launch - Production-ready OBS alternative for content creators.
 
@@ -199,6 +213,9 @@ See [Roadmap](#-roadmap) for detailed timeline.
 - [ ] Cloud integration (cloud recordings)
 - [ ] Mobile companion app (remote control)
 - [ ] AI features (auto-framing, noise removal)
+- [ ] Multi-language support
+- [ ] Chroma key (green screen)
+- [ ] Video filters & effects
 
 ---
 
