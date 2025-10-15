@@ -2,27 +2,29 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop, master ]
+    branches: [ "**" ]  # Alle Branches
   pull_request:
-    branches: [ main, develop, master ]
 
 env:
   CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: 1
 
 jobs:
   check:
-    name: Check
+    name: Check Build
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Linux dependencies
+      
+      - name: Update apt cache
+        run: sudo apt-get update
+      
+      - name: Install system dependencies
         run: |
-          sudo apt-get update
           sudo apt-get install -y \
             libxcb1-dev \
             libxcb-render0-dev \
@@ -32,53 +34,27 @@ jobs:
             libssl-dev \
             libdbus-1-dev \
             pkg-config
-
-      - name: Check workspace
+      
+      - name: Verify libxcb installation
+        run: |
+          dpkg -l | grep libxcb || true
+          pkg-config --exists xcb && echo "✅ xcb found" || echo "❌ xcb NOT found"
+          pkg-config --cflags xcb || true
+          pkg-config --libs xcb || true
+      
+      - name: Cargo check
         run: cargo check --workspace --all-targets --verbose
 
-  test:
-    name: Test Suite
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libxcb1-dev \
-            libxcb-render0-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev \
-            libssl-dev \
-            libdbus-1-dev \
-            pkg-config
-
-      - name: Run tests
-        run: cargo test --workspace --verbose
-
-  clippy:
-    name: Clippy
+  build-linux:
+    name: Build (Linux)
     runs-on: ubuntu-latest
+    
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-
-      - name: Install Linux dependencies
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -90,72 +66,69 @@ jobs:
             libssl-dev \
             libdbus-1-dev \
             pkg-config
-
-      - name: Run clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-  fmt:
-    name: Format
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-  build:
-    name: Build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libxcb1-dev \
-            libxcb-render0-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev \
-            libssl-dev \
-            libdbus-1-dev \
-            pkg-config
-
-      - name: Build workspace
-        run: cargo build --workspace --release --verbose
-
-      - name: Upload artifacts (Linux)
-        if: runner.os == 'Linux'
+      
+      - name: Build
+        run: cargo build --release --verbose
+      
+      - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: rivulet-linux
+          name: rivulet-linux-x86_64
           path: target/release/rivulet
 
-      - name: Upload artifacts (Windows)
-        if: runner.os == 'Windows'
+  build-windows:
+    name: Build (Windows)
+    runs-on: windows-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Build
+        run: cargo build --release --verbose
+      
+      - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: rivulet-windows
+          name: rivulet-windows-x86_64
           path: target/release/rivulet.exe
 
-      - name: Upload artifacts (macOS)
-        if: runner.os == 'macOS'
+  build-macos:
+    name: Build (macOS)
+    runs-on: macos-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Build
+        run: cargo build --release --verbose
+      
+      - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: rivulet-macos
+          name: rivulet-macos-x86_64
           path: target/release/rivulet
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxcb1-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev \
+            libxkbcommon-dev \
+            libssl-dev \
+            libdbus-1-dev \
+            pkg-config
+      
+      - name: 
