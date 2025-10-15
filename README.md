@@ -62,4 +62,155 @@ Rivulet aims to be a **complete reimplementation of OBS Studio in Rust**, provid
   - NVIDIA NVENC
   - Intel QuickSync
   - AMD AMF
-  - 
+  - Auto-detection of best encoder
+
+### 📅 Planned Features
+
+See [Roadmap](#-roadmap) for detailed timeline.
+
+---
+
+## 🚀 Roadmap
+
+> **Current Version:** v0.1 (October 2025)  
+> **Next Release:** v0.2 (December 31, 2025)
+
+### Q4 2025 - v0.2: Audio & Performance 🔊
+
+**Target: December 31, 2025** | **Status: In Progress**
+
+**Audio Capture**
+- [ ] System audio capture (desktop/game sound)
+- [ ] Microphone audio capture
+- [ ] Audio/video synchronization
+- [ ] Audio mixer UI with volume sliders
+- [ ] Separate audio tracks (system/mic)
+
+**Performance**
+- [ ] Hardware encoding support
+  - [ ] NVIDIA NVENC (H264/HEVC)
+  - [ ] Intel QuickSync
+  - [ ] AMD AMF
+- [ ] Auto-detect best available encoder
+- [ ] Fallback to software encoding
+- [ ] Performance metrics display
+
+**Quality of Life**
+- [ ] Better error messages
+- [ ] Recording time display
+- [ ] FPS counter during recording
+
+**Goal:** Enable high-quality recording with audio for YouTube/Twitch content creators.
+
+---
+
+### Q1 2026 - v0.3: UX & Features 🎨
+
+**Target: March 31, 2026**
+
+**User Experience**
+- [ ] Settings persistence (save/load config)
+- [ ] Keyboard shortcuts
+  - [ ] F9: Start/Stop recording
+  - [ ] F8: Pause/Resume
+  - [ ] F7: Mute microphone
+- [ ] System tray integration
+- [ ] Recording timer overlay
+- [ ] Recent recordings list
+
+**Features**
+- [ ] Monitor selection (multi-monitor support)
+- [ ] Region capture (select specific area)
+- [ ] Codec selection UI (H264/H265/VP9)
+- [ ] Audio level visualizer
+- [ ] Preset management (1080p60, 720p30, etc.)
+
+**Developer Experience**
+- [ ] Update check system
+- [ ] Crash reporting (opt-in)
+- [ ] Beta testing program
+- [ ] Documentation website
+
+**Goal:** Feature-complete recording software with polished, professional UX.
+
+---
+
+### Q2 2026 - v0.5: Streaming 📡
+
+**Target: June 30, 2026**
+
+**Streaming Core**
+- [ ] RTMP client implementation
+- [ ] Stream health monitoring
+- [ ] Adaptive bitrate
+- [ ] Stream presets (Twitch, YouTube, Facebook)
+
+**Advanced Features**
+- [ ] Dual output (record + stream simultaneously)
+- [ ] Basic overlays (text, images, webcam)
+- [ ] Scene management (basic)
+- [ ] Transition effects
+
+**Integrations**
+- [ ] Twitch integration (OAuth, chat)
+- [ ] YouTube Live integration
+- [ ] Custom RTMP server support
+
+**Goal:** Enable live streaming to major platforms.
+
+---
+
+### Q3 2026 - v1.0: Production Release 🚀
+
+**Target: September 30, 2026**
+
+**Advanced Features**
+- [ ] Multi-scene management
+- [ ] Advanced overlays & scenes
+- [ ] Source composition (layers)
+- [ ] Audio filters (noise suppression, compressor)
+- [ ] Multi-track audio export
+- [ ] Replay buffer
+
+**Production Ready**
+- [ ] Auto-update system
+- [ ] Professional QA testing
+- [ ] Complete documentation
+- [ ] Video tutorials
+- [ ] Community Discord/Forum
+
+**Polish**
+- [ ] Installer (Windows MSI, macOS DMG, Linux AppImage)
+- [ ] Code signing (Windows/macOS)
+- [ ] Telemetry (opt-in, privacy-first)
+- [ ] Marketing website
+
+**Goal:** Public launch - Production-ready OBS alternative for content creators.
+
+---
+
+### Future (v2.0+) 🔮
+
+**Advanced Features**
+- [ ] Virtual camera output
+- [ ] Browser sources (CEF integration)
+- [ ] Plugin system (native Rust plugins)
+- [ ] OBS plugin compatibility layer
+- [ ] Cloud integration (cloud recordings)
+- [ ] Mobile companion app (remote control)
+- [ ] AI features (auto-framing, noise removal)
+
+---
+
+## 📦 Installation
+
+### Prerequisites
+
+**FFmpeg** must be installed and available in PATH:
+
+#### Windows
+```powershell
+# Using Chocolatey
+choco install ffmpeg
+
+# Or download from: https://ffmpeg.org/download.html
