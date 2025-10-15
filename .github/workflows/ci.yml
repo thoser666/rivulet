@@ -1,0 +1,64 @@
+name: CI
+
+on: 
+  push:
+  pull_request:
+
+jobs:
+  check-core:
+    name: Check Core (No GUI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Check core packages
+        run: |
+          cargo check -p rivulet-core --verbose
+          cargo check -p rivulet-streaming --verbose
+          cargo check -p rivulet-capture --verbose
+          cargo check -p rivulet-obs-compat --verbose
+          cargo check -p rivulet-audio --verbose
+          cargo check -p rivulet-plugins --verbose
+
+  build-windows:
+    name: Build Windows (Full)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Build all packages
+        run: cargo build --workspace --verbose
+      
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: rivulet-windows
+          path: target/debug/rivulet.exe
+
+  build-macos:
+    name: Build macOS (Full)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Build all packages
+        run: cargo build --workspace --verbose
+      
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: rivulet-macos
+          path: target/debug/rivulet
+
+  fmt:
+    name: Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
