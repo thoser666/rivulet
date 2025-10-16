@@ -2,133 +2,87 @@ name: CI
 
 on:
   push:
-    branches: [ master, develop ]
+    branches: [ "**" ] # Läuft auf allen Branches
   pull_request:
-    branches: [ master, develop ]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  test:
-    name: Test
+  build_and_test:
+    name: Build & Test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false # Lässt andere Jobs weiterlaufen, auch wenn einer fehlschlägt
       matrix:
         os: [ ubuntu-latest, windows-latest, macos-latest ]
-        rust: [ stable ]
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Install Rust
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: ${{ matrix.rust }}
 
-      # Install Linux dependencies for xcap and egui
-      - name: Install Linux dependencies
+      - name: Install Linux dependencies (if applicable)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get install -y --no-install-recommends \
             libxcb1-dev \
             libxcb-render0-dev \
             libxcb-shape0-dev \
             libxcb-xfixes0-dev \
-            libxcb-shm0-dev \
-            libx11-dev \
-            libxrandr-dev \
-            libxext-dev \
-            libxcomposite-dev \
-            libxdamage-dev \
-            libxfixes-dev \
-            libxi-dev \
-            libxtst-dev \
-            libfontconfig1-dev \
-            libfreetype6-dev \
+            libxkbcommon-dev \
             libssl-dev \
-            pkg-config
+            libdbus-1-dev \
+            pkg-config \
+            libgl1-mesa-dev \
+            libasound2-dev
 
-      - name: Cache cargo registry
+      - name: Cache dependencies
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Cache cargo index
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+      - name: Build
+        run: cargo build --workspace --verbose
 
-      - name: Cache cargo build
-        uses: actions/cache@v4
+      - name: Run tests
+        run: cargo test --workspace --verbose
+
+  lints:
+    name: Lints (Format & Clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          path: target
-          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          components: rustfmt, clippy
 
       - name: Check formatting
         run: cargo fmt --all -- --check
-        continue-on-error: true
 
-      - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
-        continue-on-error: true
-
-      - name: Build
-        run: cargo build --verbose
-
-      - name: Run tests
-        run: cargo test --verbose
-        continue-on-error: true
-
-  build:
-    name: Build Release
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-          - os: macos-latest
-            target: x86_64-apple-darwin
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      # Install Linux dependencies
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
+      - name: Run Clippy
+        # Clippy braucht auch die Dependencies, weil es kompiliert
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get install -y --no-install-recommends \
             libxcb1-dev \
             libxcb-render0-dev \
             libxcb-shape0-dev \
             libxcb-xfixes0-dev \
-            libxcb-shm0-dev \
-            libx11-dev \
-            libxrandr-dev \
-            libxext-dev \
-            libfontconfig1-dev \
+            libxkbcommon-dev \
+            libssl-dev \
+            libdbus-1-dev \
             pkg-config
-
-      - name: Build release
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: rivulet-${{ matrix.target }}
-          path: |
-            target/${{ matrix.target }}/release/rivulet*
-            !target/${{ matrix.target }}/release/*.d
-            !target/${{ matrix.target }}/release/*.pdb
+          cargo clippy --workspace --all-targets -- -D warnings
