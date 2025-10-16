@@ -1,16 +1,9 @@
-use anyhow::{Context, Result};
-use crossbeam_channel::{bounded, Receiver, Sender};
 use std::path::PathBuf;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
-use std::thread;
 
 pub mod encoder;
 pub mod recorder;
 
-pub use encoder::{Encoder, VideoEncoder};
+pub use encoder::*;
 pub use recorder::*;
 
 /// Frame data for encoding
@@ -30,7 +23,7 @@ pub struct RecordingSettings {
     pub width: u32,
     pub height: u32,
     pub fps: u32,
-    pub bitrate: u64,
+    pub bitrate: u64, // bits per second
     pub codec: String,
 }
 
@@ -41,7 +34,7 @@ impl Default for RecordingSettings {
             width: 1920,
             height: 1080,
             fps: 30,
-            bitrate: 5_000_000,
+            bitrate: 5_000_000, // 5 Mbps
             codec: "h264".to_string(),
         }
     }
