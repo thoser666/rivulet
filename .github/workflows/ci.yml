@@ -1,20 +1,20 @@
 name: CI
 
-on: [ push, pull_request ]
+on: [push, pull_request]
 
 jobs:
-  build_on_linux:
+  build_linux:
     name: Build and Test on Linux
     runs-on: ubuntu-latest
-
+    
     steps:
-      - name: Checkout repository
+      - name: 1. Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
+      - name: 2. Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Linux System Dependencies
+      - name: 3. Install Linux System Dependencies
         run: |
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends \
@@ -22,7 +22,20 @@ jobs:
             pkg-config \
             libxcb1-dev
 
-      - name: Build and Test Project
+      - name: 4. Set linker path environment for all subsequent steps
+        # DIES IST DER ENTSCHEIDENDE SCHRITT.
+        # Wir schreiben die mächtigste Cargo-Umgebungsvariable in die
+        # Umgebung der gesamten Job-Ausführung.
         run: |
+          echo "Setting the master RUSTFLAGS for the Linux target..."
+          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-L /usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+
+      - name: 5. Build the project
+        run: |
+          echo "--- Current RUSTFLAGS for Linux target ---"
+          echo $CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS
+          echo "------------------------------------------"
           cargo build --workspace --verbose
-          cargo test --workspace --verbose
+
+      - name: 6. Run tests
+        run: cargo test --workspace --verbose
