@@ -4,7 +4,6 @@ pub mod api;
 pub mod plugin;
 pub mod types;
 
-
 /// Plugin Manager - handles OBS plugin loading
 pub struct PluginManager;
 
