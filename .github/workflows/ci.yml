@@ -1,19 +1,11 @@
 name: CI
 
-on:
-  push:
-    branches: [ "12-localrecording-v2" ] # NUR auf diesem Branch laufen lassen
-  pull_request:
-    branches: [ "main", "master" ]
-
-env:
-  CARGO_TERM_COLOR: always
+on: [push, pull_request]
 
 jobs:
   build_on_linux:
     name: Build and Test on Linux
     runs-on: ubuntu-latest
-    # KEIN CACHE - wir wollen einen sauberen Build erzwingen
     
     steps:
       - name: 1. Checkout repository
@@ -24,9 +16,7 @@ jobs:
 
       - name: 3. Install Linux System Dependencies
         run: |
-          echo ">>> Updating package lists..."
           sudo apt-get update -y
-          echo ">>> Installing required libraries..."
           sudo apt-get install -y --no-install-recommends \
             build-essential \
             pkg-config \
@@ -37,27 +27,16 @@ jobs:
             libxkbcommon-dev \
             libssl-dev \
             libdbus-1-dev
-          echo ">>> Finished installation."
 
-      - name: 4. Verify Installation and Find Paths (DEBUG)
-        run: |
-          echo "--- Verifying libxcb installation ---"
-          dpkg -L libxcb1-dev
-          echo "--- Searching for libxcb.so ---"
-          find /usr -name "libxcb.so"
-          echo "--- Checking pkg-config ---"
-          pkg-config --cflags xcb
-          pkg-config --libs xcb
-          
-      - name: 5. Build the project with explicit library paths
-        # Wir sagen dem Linker explizit, wo er suchen soll
+      - name: 4. Build and Test Project
+        # DIES IST DIE ENTSCHEIDENDE ÄNDERUNG:
+        # Wir setzen die Umgebungsvariablen, die der Linker und pkg-config verwenden.
         env:
-          RUSTFLAGS: "-L native=/usr/lib/x86_64-linux-gnu"
+          LIBRARY_PATH: /usr/lib/x86_64-linux-gnu
+          LD_LIBRARY_PATH: /usr/lib/x86_64-linux-gnu
+          PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig
         run: |
+          echo "Building with explicit library paths..."
           cargo build --workspace --verbose
-
-      - name: 6. Run tests (if build succeeds)
-        env:
-          RUSTFLAGS: "-L native=/usr/lib/x86_64-linux-gnu"
-        run: |
+          echo "Testing with explicit library paths..."
           cargo test --workspace --verbose
