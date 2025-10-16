@@ -1,52 +1,54 @@
 use eframe::egui;
-use rivulet_core::*;
-use rivulet_obs_compat::PluginManager;
-use tracing_subscriber::EnvFilter;
+use rivulet_core::RivuletEngine;
 
+// 1. Deklariere, dass die Datei `src/app.rs` als Modul existiert.
 mod app;
+// 2. Importiere `RivuletApp` aus deinem eigenen Crate über das `app`-Modul.
+use crate::app::RivuletApp;
 
-use app::RivuletApp;
+fn main() -> anyhow::Result<()> {
+    // Logging initialisieren
+    tracing_subscriber::fmt::init();
 
-fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("rivulet=debug,info")),
-        )
-        .init();
+    // Tokio Runtime erstellen
+    let rt = tokio::runtime::Runtime::new()?;
 
-    tracing::info!("Starting Rivulet GUI");
-
-    if let Err(e) = PluginManager::initialize() {
-        tracing::warn!("Failed to initialize OBS compatibility: {}", e);
-    }
+    // Engine erstellen
+    let engine = RivuletEngine::new();
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("Rivulet - Streaming Software")
-            .with_inner_size([1200.0, 800.0])
-            .with_min_inner_size([800.0, 600.0]),
+            .with_inner_size([1280.0, 720.0])
+            .with_min_inner_size([800.0, 600.0])
+            .with_icon(load_icon()),
         ..Default::default()
     };
 
-    if let Err(e) = eframe::run_native(
-        "Rivulet",
+    // Die eframe-App ausführen
+    eframe::run_native(
+        "Rivulet - Screen Recording & Streaming",
         options,
-        Box::new(|cc| {
-            let rt = tokio::runtime::Runtime::new()
-                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;
-
-            let engine = rt.block_on(async {
-                RivuletEngine::new().map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
-                    let boxed: Box<dyn std::error::Error + Send + Sync> = e.into();
-                    boxed
-                })
-            })?;
-
-            Ok(Box::new(RivuletApp::new(cc, engine, rt)))
+        Box::new(move |cc| {
+            let app = RivuletApp::new(cc, engine, rt);
+            Ok(Box::new(app))
         }),
-    ) {
-        tracing::error!("Application error: {}", e);
-        std::process::exit(1);
+    )
+    .map_err(|e| anyhow::anyhow!("eframe error: {}", e))
+}
+
+// Icon-Ladefunktion (Placeholder)
+fn load_icon() -> egui::IconData {
+    let (icon_rgba, icon_width, icon_height) = {
+        // Erstelle ein einfaches 64x64 blaues Quadrat als Icon
+        let image = image::RgbaImage::from_pixel(64, 64, image::Rgba([33, 150, 243, 255]));
+        let (width, height) = image.dimensions();
+        let rgba = image.into_raw();
+        (rgba, width, height)
+    };
+
+    egui::IconData {
+        rgba: icon_rgba,
+        width: icon_width,
+        height: icon_height,
     }
 }
