@@ -8,6 +8,7 @@ pub struct VideoEncoder {
     width: u32,
     height: u32,
     fps: u32,
+    #[allow(dead_code)] // Erlaubt, dass das Feld unbenutzt ist
     bitrate: u64,
     frame_count: u64,
     ffmpeg_process: Option<Child>,
@@ -37,30 +38,31 @@ impl VideoEncoder {
 
         // Starte FFmpeg Prozess
         let ffmpeg = Command::new("ffmpeg")
-            .args(&[
+            .args([
+                // KORREKTUR: `&` entfernt
                 "-y", // Überschreibe Output-Datei
                 "-f",
                 "rawvideo",
                 "-pixel_format",
-                "bgra", // BGRA format (wie Windows DXGI)
+                "bgra",
                 "-video_size",
                 &format!("{}x{}", width, height),
                 "-framerate",
                 &fps.to_string(),
                 "-i",
-                "pipe:0", // Lese von stdin
+                "pipe:0",
                 "-c:v",
-                "libx264", // H264 Codec
+                "libx264",
                 "-preset",
-                "fast", // Encoding-Geschwindigkeit
+                "fast",
                 "-pix_fmt",
-                "yuv420p", // Kompatibel mit meisten Playern
+                "yuv420p",
                 "-b:v",
                 &bitrate.to_string(),
                 output_path.to_str().context("Invalid output path")?,
             ])
             .stdin(Stdio::piped())
-            .stderr(Stdio::inherit()) // Zeige FFmpeg Fehler
+            .stderr(Stdio::inherit())
             .spawn()
             .context("Failed to start ffmpeg. Is it installed?")?;
 
@@ -82,7 +84,6 @@ impl VideoEncoder {
         height: u32,
         stride: u32,
     ) -> Result<()> {
-        // Validierung
         if width != self.width || height != self.height {
             anyhow::bail!(
                 "Frame dimensions {}x{} don't match encoder {}x{}",
@@ -102,16 +103,13 @@ impl VideoEncoder {
             );
         }
 
-        // Schreibe Frame zu FFmpeg stdin
         if let Some(process) = &mut self.ffmpeg_process {
             if let Some(stdin) = process.stdin.as_mut() {
-                // Wenn stride == width * 4, können wir direkt schreiben
                 if stride == width * 4 {
                     stdin
                         .write_all(frame_data)
                         .context("Failed to write frame to ffmpeg")?;
                 } else {
-                    // Sonst müssen wir Zeile für Zeile kopieren (ohne padding)
                     let row_size = (width * 4) as usize;
                     for y in 0..height as usize {
                         let start = y * stride as usize;
@@ -121,7 +119,6 @@ impl VideoEncoder {
                             .context("Failed to write frame row to ffmpeg")?;
                     }
                 }
-
                 self.frame_count += 1;
             } else {
                 anyhow::bail!("FFmpeg stdin not available");
@@ -129,7 +126,6 @@ impl VideoEncoder {
         } else {
             anyhow::bail!("FFmpeg process not running");
         }
-
         Ok(())
     }
 
@@ -142,17 +138,12 @@ impl VideoEncoder {
         );
 
         if let Some(mut process) = self.ffmpeg_process.take() {
-            // Schließe stdin um FFmpeg zu signalisieren, dass wir fertig sind
             drop(process.stdin.take());
-
-            // Warte auf FFmpeg
             let status = process.wait().context("Failed to wait for ffmpeg")?;
-
             if !status.success() {
                 anyhow::bail!("FFmpeg exited with error: {}", status);
             }
         }
-
         println!("✅ Video saved to: {:?}", self.output_path);
         Ok(())
     }
@@ -164,10 +155,9 @@ impl VideoEncoder {
 
 impl Drop for VideoEncoder {
     fn drop(&mut self) {
-        // Cleanup: Beende FFmpeg falls noch aktiv
         if let Some(mut process) = self.ffmpeg_process.take() {
-            let _ = process.stdin.take(); // Schließe stdin
-            let _ = process.wait(); // Warte auf Prozess
+            let _ = process.stdin.take();
+            let _ = process.wait();
         }
     }
 }

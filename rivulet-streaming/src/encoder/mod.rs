@@ -1,9 +1,10 @@
 use crate::{EncodableFrame, RecordingSettings};
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 mod video;
 pub use video::VideoEncoder;
 
+// Dies ist nur eine Placeholder-Struktur
 pub struct Encoder {
     settings: RecordingSettings,
     start_time: Option<std::time::Instant>,
