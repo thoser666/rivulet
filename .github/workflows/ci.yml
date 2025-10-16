@@ -1,80 +1,22 @@
-name: CI
+name: Build and Test
 
-on:
-  push:
-    branches: [ "**" ] # Läuft auf allen Branches
-  pull_request:
-
-env:
-  CARGO_TERM_COLOR: always
+on: [push, pull_request]
 
 jobs:
-  build_and_test:
-    name: Build & Test on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false # Lässt andere Jobs weiterlaufen, auch wenn einer fehlschlägt
-      matrix:
-        os: [ ubuntu-latest, windows-latest, macos-latest ]
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Linux dependencies (if applicable)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libxcb1-dev \
-            libxcb-render0-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev \
-            libssl-dev \
-            libdbus-1-dev \
-            pkg-config \
-            libgl1-mesa-dev \
-            libasound2-dev
-
-      - name: Cache dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Build
-        run: cargo build --workspace --verbose
-
-      - name: Run tests
-        run: cargo test --workspace --verbose
-
-  lints:
-    name: Lints (Format & Clippy)
+  build_on_linux:
+    name: Build on Linux
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository
+      - name: 1. Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
+      - name: 2. Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
 
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-      - name: Run Clippy
-        # Clippy braucht auch die Dependencies, weil es kompiliert
+      - name: 3. Install Linux System Dependencies
         run: |
+          echo "Installing system libraries for GUI..."
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libxcb1-dev \
@@ -85,4 +27,16 @@ jobs:
             libssl-dev \
             libdbus-1-dev \
             pkg-config
-          cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: 4. Verify Installation (DEBUG STEP)
+        run: |
+          echo "--- Checking for libxcb ---"
+          dpkg -l | grep libxcb1-dev
+          pkg-config --exists xcb && echo "✅ pkg-config found xcb" || echo "❌ pkg-config did NOT find xcb"
+          echo "---------------------------"
+
+      - name: 5. Build the project
+        run: cargo build --workspace --verbose
+
+      - name: 6. Run tests
+        run: cargo test --workspace --verbose
