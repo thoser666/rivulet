@@ -1,14 +1,9 @@
-#[cfg(windows)]
 fn main() {
-    let mut res = winresource::WindowsResource::new();
-    res.set_icon("assets/rivulet_logo.ico");
-    res.set("ProductName", "Rivulet");
-    res.set("FileDescription", "Screen Recording & Streaming");
-    res.set("CompanyName", "Rivulet Team");
-    res.compile().unwrap();
-}
-
-#[cfg(not(windows))]
-fn main() {
-    // Nichts zu tun auf anderen Plattformen
+    // Dieses Build-Script läuft nur, wenn für Linux kompiliert wird.
+    #[cfg(target_os = "linux")]
+    {
+        println!("cargo:rustc-link-search=native=/usr/lib/x86_64-linux-gnu");
+        println!("cargo:rustc-link-lib=xcb");
+        println!("!!! Rivulet build script is forcing linker path for Linux !!!");
+    }
 }

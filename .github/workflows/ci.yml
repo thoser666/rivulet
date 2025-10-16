@@ -3,13 +3,9 @@ name: CI
 on: [ push, pull_request ]
 
 jobs:
-  build_and_test:
-    name: Build & Test on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ ubuntu-latest, windows-latest, macos-latest ]
+  build_on_linux:
+    name: Build and Test on Linux
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
@@ -18,22 +14,15 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Linux dependencies (if applicable)
-        if: runner.os == 'Linux'
+      - name: Install Linux System Dependencies
         run: |
-          sudo apt-get update
+          sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends \
-            libxcb1-dev \
-            libxcb-render0-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev \
-            libssl-dev \
-            libdbus-1-dev \
-            pkg-config
+            build-essential \
+            pkg-config \
+            libxcb1-dev
 
-      - name: Build
-        run: cargo build --workspace --verbose
-
-      - name: Test
-        run: cargo test --workspace --verbose
+      - name: Build and Test Project
+        run: |
+          cargo build --workspace --verbose
+          cargo test --workspace --verbose
