@@ -2,47 +2,37 @@
 name = "rivulet-gui"
 version = "0.1.0"
 edition = "2021"
-description = "GUI application for Rivulet streaming software"
-build = "build.rs"
+rust-version = "1.70"
 
-[[bin]]
-name = "rivulet"
-path = "src/main.rs"
-
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-# Rivulet crates
+# GUI-Framework
+eframe = { version = "0.27.2", default-features = false, features = [
+    "accesskit",
+    "default_fonts",
+    "glow",
+    "persistence",
+] }
+
+# Abhängigkeiten für die Rivulet-App-Logik
+log = "0.4.21"
+serde = { version = "1.0", features = ["derive"] }
+chrono = { version = "0.4.35", features = ["serde"] }
+
+# Asynchrone Laufzeit und Desktop-Portale
+tokio = { version = "1.36.0", features = ["full"] }
+once_cell = "1.19.0"
+serde_json = "1.0.114"
+anyhow = "1.0.81"
+
+# Lokale Core-Bibliothek
 rivulet-core = { path = "../rivulet-core" }
-rivulet-obs-compat = { path = "../rivulet-obs-compat" }
-rivulet-capture = { path = "../rivulet-capture" }
-rivulet-streaming = { path = "../rivulet-streaming" }
 
-# Async runtime
-tokio = { workspace = true }
+# Logging-Bibliothek
+tracing-subscriber = { version = "0.3.18", features = ["fmt"] }
 
-# Error handling
-anyhow = { workspace = true }
-
-# Logging
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-
-# GUI
-eframe = "0.28"
-egui = "0.28"
-egui_extras = "0.28"
-
-# Utilities
-rfd = "0.14"
-poll-promise = "0.3"
-chrono = "0.4"
-image = "0.25"  # Für Icon-Loading
-dirs = "5.0"
-
-# Screen capture (desktop only)
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-xcap = "0.0.9"
+# --- NEU: Bildverarbeitungs-Bibliothek für das Icon ---
+image = { version = "0.25.1", features = ["png"] }
 
 [build-dependencies]
-# Windows Icon für .exe
-[target.'cfg(windows)'.build-dependencies]
-winresource = "0.1"
+winres = "0.1"

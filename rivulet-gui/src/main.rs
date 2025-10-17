@@ -1,54 +1,48 @@
-use eframe::egui;
-use rivulet_core::RivuletEngine;
+// Dieses Attribut muss ganz oben stehen.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-// 1. Deklariere, dass die Datei `src/app.rs` als Modul existiert.
+// Modul-Deklarationen
 mod app;
-// 2. Importiere `RivuletApp` aus deinem eigenen Crate über das `app`-Modul.
+
+// Importe
 use crate::app::RivuletApp;
+use eframe::egui::{self, IconData};
+use rivulet_core::RivuletEngine;
+use tokio::runtime::Runtime;
 
-fn main() -> anyhow::Result<()> {
-    // Logging initialisieren
+fn main() -> Result<(), eframe::Error> {
     tracing_subscriber::fmt::init();
+    run_native("Rivulet", RivuletEngine::new(), Runtime::new().unwrap())
+}
 
-    // Tokio Runtime erstellen
-    let rt = tokio::runtime::Runtime::new()?;
-
-    // Engine erstellen
-    let engine = RivuletEngine::new();
-
-    let options = eframe::NativeOptions {
+fn run_native(app_name: &str, engine: RivuletEngine, _rt: Runtime) -> Result<(), eframe::Error> {
+    let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1280.0, 720.0])
-            .with_min_inner_size([800.0, 600.0])
-            .with_icon(load_icon()),
+            .with_inner_size(egui::vec2(800.0, 600.0))
+            .with_title(app_name)
+            .with_icon(create_icon())
+            // KORREKTUR: Die Methode heißt .with_app_id()
+            .with_app_id("rivulet_main_window"),
+
         ..Default::default()
     };
 
-    // Die eframe-App ausführen
     eframe::run_native(
-        "Rivulet - Screen Recording & Streaming",
-        options,
-        Box::new(move |cc| {
-            let app = RivuletApp::new(cc, engine, rt);
-            Ok(Box::new(app))
+        app_name,
+        native_options,
+        Box::new(|cc| {
+            let app = RivuletApp::new(cc, engine);
+            Box::new(app)
         }),
     )
-    .map_err(|e| anyhow::anyhow!("eframe error: {}", e))
 }
 
-// Icon-Ladefunktion (Placeholder)
-fn load_icon() -> egui::IconData {
-    let (icon_rgba, icon_width, icon_height) = {
-        // Erstelle ein einfaches 64x64 blaues Quadrat als Icon
-        let image = image::RgbaImage::from_pixel(64, 64, image::Rgba([33, 150, 243, 255]));
-        let (width, height) = image.dimensions();
-        let rgba = image.into_raw();
-        (rgba, width, height)
-    };
+fn create_icon() -> IconData {
+    let image = image::RgbaImage::from_fn(64, 64, |_x, _y| image::Rgba([33, 150, 243, 255]));
 
-    egui::IconData {
-        rgba: icon_rgba,
-        width: icon_width,
-        height: icon_height,
+    IconData {
+        rgba: image.into_raw(),
+        width: 64,
+        height: 64,
     }
 }
