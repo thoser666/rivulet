@@ -17,7 +17,11 @@ use {
     tokio::runtime::Runtime,
 };
 
-// --- Linux-spezifische statische Variablen und Typen ---
+// --- ENDGÜLTIG KORREKTE Windows-spezifische Imports ---
+#[cfg(target_os = "windows")]
+use windows_capture::{self, settings::Settings};
+
+// --- Linux-spezifische Typen ---
 #[cfg(target_os = "linux")]
 static TOKIO_RT: Lazy<Runtime> = Lazy::new(|| tokio::runtime::Runtime::new().unwrap());
 
@@ -33,7 +37,7 @@ enum BackendMessage {
 #[derive(serde::Deserialize, serde::Serialize, Default)]
 #[serde(default)]
 pub struct RivuletApp {
-    #[serde(skip)] // Die Engine wird nicht serialisiert.
+    #[serde(skip)]
     engine: RivuletEngine,
 
     // --- Linux-spezifische Felder ---
@@ -61,38 +65,63 @@ pub struct RivuletApp {
     #[cfg(target_os = "linux")]
     #[serde(skip)]
     receiver: Receiver<BackendMessage>,
+
+    // --- Windows-spezifische Felder ---
+    #[cfg(target_os = "windows")]
+    #[serde(skip)]
+    is_windows_recording: bool,
 }
 
 // --- Linux-spezifische Methoden ---
 #[cfg(target_os = "linux")]
 impl RivuletApp {
-    fn start_preview(&mut self) { /* ... Implementierung ... */
+    fn start_preview(&mut self) { /* ... */
     }
-    fn start_recording(&mut self) { /* ... Implementierung ... */
+    fn start_recording(&mut self) { /* ... */
     }
-    fn stop_recording(&mut self) { /* ... Implementierung ... */
+    fn stop_recording(&mut self) { /* ... */
     }
-    fn stop_preview(&mut self) { /* ... Implementierung ... */
+    fn stop_preview(&mut self) { /* ... */
     }
-    fn save_recording(&self) { /* ... Implementierung ... */
+    fn save_recording(&self) { /* ... */
+    }
+}
+
+// --- Windows-spezifische Methoden (Platzhalter mit korrekter API-Struktur) ---
+#[cfg(target_os = "windows")]
+impl RivuletApp {
+    fn start_windows_recording(&mut self) {
+        println!("Starte Aufnahme unter Windows... (TODO)");
+        self.is_windows_recording = true;
+
+        // Dieser Code MUSS in einem asynchronen Kontext ausgeführt werden,
+        // z.B. mit tokio::spawn.
+        // let settings = Settings::default(); // Erstellt Standardeinstellungen
+        // let picker = match windows_capture::Picker(&settings) {
+        //     Ok(picker) => picker,
+        //     Err(e) => {
+        //         eprintln!("Fehler beim Erstellen des Pickers: {}", e);
+        //         return;
+        //     }
+        // };
+        // let result = picker.pick_async().await;
+        // ...
+    }
+
+    fn stop_windows_recording(&mut self) {
+        println!("Stoppe Aufnahme unter Windows... (TODO)");
+        self.is_windows_recording = false;
     }
 }
 
 impl RivuletApp {
-    /// Erstellt eine neue Instanz der RivuletApp.
-    /// Diese Funktion wird einmal beim Start aufgerufen.
     pub fn new(cc: &eframe::CreationContext<'_>, engine: RivuletEngine) -> Self {
-        // Versucht, den Zustand der App aus dem Speicher zu laden.
         if let Some(storage) = cc.storage {
             if let Some(mut app) = eframe::get_value::<Self>(storage, eframe::APP_KEY) {
-                // Setzt die neu erstellte Engine in die geladene App ein,
-                // da die Engine selbst nicht gespeichert wurde.
                 app.engine = engine;
                 return app;
             }
         }
-
-        // Wenn kein gespeicherter Zustand vorhanden ist, wird eine neue Instanz erstellt.
         Self {
             engine,
             ..Default::default()
@@ -101,26 +130,15 @@ impl RivuletApp {
 }
 
 impl eframe::App for RivuletApp {
-    /// Speichert den Zustand der App vor dem Beenden.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
     }
 
-    /// Wird bei jedem Frame aufgerufen, um die UI zu zeichnen.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // --- Linux-spezifische Nachrichtenverarbeitung ---
-        #[cfg(target_os = "linux")]
-        {
-            if let Ok(msg) = self.receiver.try_recv() {
-                // ... Nachrichtenverarbeitungslogik ...
-            }
-        }
-
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("Quit").clicked() {
-                        // Sendet den Befehl zum Schließen des Fensters.
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
                 });
@@ -129,15 +147,11 @@ impl eframe::App for RivuletApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Welcome to Rivulet");
-            // Hier können UI-Elemente hinzugefügt werden, die die 'engine' verwenden.
-            // z.B. ui.label(format!("Engine status: {:?}", self.engine.get_status()));
-
             ui.separator();
 
-            // --- Plattformspezifische UI für die Aufnahme ---
             #[cfg(target_os = "linux")]
             {
-                // UI für die Aufnahme-Buttons unter Linux
+                ui.label("Linux Recording Controls:");
                 if self.is_previewing {
                     // ...
                 } else if ui.button("▶ Start Preview").clicked() {
@@ -145,22 +159,39 @@ impl eframe::App for RivuletApp {
                 }
             }
 
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(target_os = "windows")]
             {
-                // Hinweis für Benutzer auf Nicht-Linux-Systemen.
-                ui.add_space(20.0);
-                ui.label(egui::RichText::new("ℹ️ Screen Recording Feature").strong());
-                ui.label("This feature is only available on Linux systems using the PipeWire video server.");
+                ui.add_space(10.0);
+                ui.label(egui::RichText::new("Windows Screen Recording").strong());
+
+                if self.is_windows_recording {
+                    if ui.button("⏹ Stop Recording").clicked() {
+                        self.stop_windows_recording();
+                    }
+                } else {
+                    if ui.button("⏺ Start Recording").clicked() {
+                        self.start_windows_recording();
+                    }
+                }
             }
 
-            // Footer
+            #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+            {
+                ui.add_space(20.0);
+                ui.label(egui::RichText::new("ℹ️ Screen Recording Feature").strong());
+                ui.label("This feature is currently only available on Linux and Windows.");
+            }
+
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 0.0;
                     ui.label("powered by ");
                     ui.hyperlink_to("egui", "https://github.com/emilk/egui");
                     ui.label(" and ");
-                    ui.hyperlink_to("eframe", "https://github.com/emilk/egui/tree/master/crates/eframe");
+                    ui.hyperlink_to(
+                        "eframe",
+                        "https://github.com/emilk/egui/tree/master/crates/eframe",
+                    );
                     ui.label(".");
                 });
             });
