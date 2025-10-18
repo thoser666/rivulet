@@ -1,0 +1,11 @@
+{
+  "name": "rivulet-project",
+  "version-string": "1.0.0",
+  "dependencies": [
+    {
+      "name": "ffmpeg",
+      "version>=": "6.0"
+    }
+  ],
+  "builtin-baseline": "4f8a31de2301934371720d6505345a909a34b2f8"
+}

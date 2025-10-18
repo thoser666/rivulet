@@ -121,23 +121,55 @@ pub struct RivuletApp {
     #[serde(skip)]
     engine: RivuletEngine,
 
-    #[cfg(target_os = "linux")] #[serde(skip)] is_previewing: bool,
-    #[cfg(target_os = "linux")] #[serde(skip)] is_recording: bool,
-    #[cfg(target_os = "linux")] #[serde(skip)] screencast: Screencast,
-    #[cfg(target_os = "linux")] #[serde(skip)] session: Option<Session<'static>>,
-    #[cfg(target_os = "linux")] #[serde(skip)] stream: Option<Stream>,
-    #[cfg(target_os = "linux")] #[serde(skip)] pipewire_fd: Option<Fd>,
-    #[cfg(target_os = "linux")] #[serde(skip)] sender: std_mpsc::Sender<BackendMessage>,
-    #[cfg(target_os = "linux")] #[serde(skip)] receiver: std_mpsc::Receiver<BackendMessage>,
+    #[cfg(target_os = "linux")]
+    #[serde(skip)]
+    is_previewing: bool,
+    #[cfg(target_os = "linux")]
+    #[serde(skip)]
+    is_recording: bool,
+    #[cfg(target_os = "linux")]
+    #[serde(skip)]
+    screencast: Screencast,
+    #[cfg(target_os = "linux")]
+    #[serde(skip)]
+    session: Option<Session<'static>>,
+    #[cfg(target_os = "linux")]
+    #[serde(skip)]
+    stream: Option<Stream>,
+    #[cfg(target_os = "linux")]
+    #[serde(skip)]
+    pipewire_fd: Option<Fd>,
+    #[cfg(target_os = "linux")]
+    #[serde(skip)]
+    sender: std_mpsc::Sender<BackendMessage>,
+    #[cfg(target_os = "linux")]
+    #[serde(skip)]
+    receiver: std_mpsc::Receiver<BackendMessage>,
 
-    #[cfg(target_os = "windows")] #[serde(skip)] is_windows_recording: bool,
-    #[cfg(target_os = "windows")] #[serde(skip)] monitors: Vec<Monitor>,
-    #[cfg(target_os = "windows")] #[serde(skip)] windows: Vec<Window>,
-    #[cfg(target_os = "windows")] #[serde(skip)] selected_monitor_idx: Option<usize>,
-    #[cfg(target_os = "windows")] #[serde(skip)] selected_window_idx: Option<usize>,
-    #[cfg(target_os = "windows")] #[serde(skip)] frame_receiver: Option<Receiver<RawFrame>>,
-    #[cfg(target_os = "windows")] #[serde(skip)] stop_signal: Option<Arc<AtomicBool>>,
-    #[cfg(target_os = "windows")] #[serde(skip)] last_error: Option<String>,
+    #[cfg(target_os = "windows")]
+    #[serde(skip)]
+    is_windows_recording: bool,
+    #[cfg(target_os = "windows")]
+    #[serde(skip)]
+    monitors: Vec<Monitor>,
+    #[cfg(target_os = "windows")]
+    #[serde(skip)]
+    windows: Vec<Window>,
+    #[cfg(target_os = "windows")]
+    #[serde(skip)]
+    selected_monitor_idx: Option<usize>,
+    #[cfg(target_os = "windows")]
+    #[serde(skip)]
+    selected_window_idx: Option<usize>,
+    #[cfg(target_os = "windows")]
+    #[serde(skip)]
+    frame_receiver: Option<Receiver<RawFrame>>,
+    #[cfg(target_os = "windows")]
+    #[serde(skip)]
+    stop_signal: Option<Arc<AtomicBool>>,
+    #[cfg(target_os = "windows")]
+    #[serde(skip)]
+    last_error: Option<String>,
 }
 
 impl Default for RivuletApp {
@@ -191,7 +223,11 @@ impl RivuletApp {
         // KORREKTUR: Der explizite `request_user_consent`-Aufruf wird entfernt.
         // Die Bibliothek kümmert sich implizit darum.
         self.monitors = Monitor::get_all().unwrap_or_default();
-        self.windows = Window::get_all().unwrap_or_default().into_iter().filter(|w| !w.title().is_empty() && w.is_capturable()).collect();
+        self.windows = Window::get_all()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|w| !w.title().is_empty() && w.is_capturable())
+            .collect();
         self.selected_monitor_idx = None;
         self.selected_window_idx = None;
     }
@@ -201,8 +237,14 @@ impl RivuletApp {
             self.monitors.get(idx).map(|m| m.clone().into())
         } else if let Some(idx) = self.selected_window_idx {
             self.windows.get(idx).map(|w| w.clone().into())
-        } else { self.last_error = Some("Keine Aufnahmequelle ausgewählt.".to_string()); return; };
-        let Some(item) = item else { self.last_error = Some("Ausgewählte Quelle ist ungültig.".to_string()); return; };
+        } else {
+            self.last_error = Some("Keine Aufnahmequelle ausgewählt.".to_string());
+            return;
+        };
+        let Some(item) = item else {
+            self.last_error = Some("Ausgewählte Quelle ist ungültig.".to_string());
+            return;
+        };
 
         let (sender, receiver) = mpsc::channel();
         self.frame_receiver = Some(receiver);
@@ -229,7 +271,9 @@ impl RivuletApp {
             );
             println!("Starte Aufnahme-Thread...");
             if let Err(e) = CaptureHandler::start(settings) {
-                if !e.to_string().contains("Benutzer gestoppt") && !e.to_string().contains("GUI-Kanal geschlossen") {
+                if !e.to_string().contains("Benutzer gestoppt")
+                    && !e.to_string().contains("GUI-Kanal geschlossen")
+                {
                     eprintln!("Fehler im Aufnahme-Thread: {}", e);
                 }
             }
@@ -253,7 +297,8 @@ impl RivuletApp {
     pub fn new(cc: &eframe::CreationContext<'_>, engine: RivuletEngine) -> Self {
         let mut app = Self::default();
         app.engine = engine;
-        #[cfg(target_os = "windows")] {
+        #[cfg(target_os = "windows")]
+        {
             app.refresh_capture_sources();
         }
         app
@@ -266,7 +311,8 @@ impl eframe::App for RivuletApp {
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        #[cfg(target_os = "windows")] {
+        #[cfg(target_os = "windows")]
+        {
             if self.is_windows_recording {
                 if let Some(receiver) = self.frame_receiver.as_ref() {
                     if receiver.try_recv().is_err() {
@@ -281,14 +327,22 @@ impl eframe::App for RivuletApp {
             }
             if let Some(receiver) = &self.frame_receiver {
                 while let Ok(raw_frame) = receiver.try_recv() {
-                    self.engine.process_raw_frame(&raw_frame.data, raw_frame.width, raw_frame.height);
+                    self.engine.process_raw_frame(
+                        &raw_frame.data,
+                        raw_frame.width,
+                        raw_frame.height,
+                    );
                 }
             }
         }
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
-                ui.menu_button("File", |ui| { if ui.button("Quit").clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); } });
+                ui.menu_button("File", |ui| {
+                    if ui.button("Quit").clicked() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                });
             });
         });
 
@@ -296,43 +350,84 @@ impl eframe::App for RivuletApp {
             ui.heading("Welcome to Rivulet");
             ui.separator();
 
-            #[cfg(target_os = "windows")] {
+            #[cfg(target_os = "windows")]
+            {
                 ui.add_space(10.0);
                 ui.label(egui::RichText::new("Windows Screen Recording").strong());
                 if self.is_windows_recording {
-                    if ui.button("⏹ Stop Recording").clicked() { self.stop_windows_recording(); }
+                    if ui.button("⏹ Stop Recording").clicked() {
+                        self.stop_windows_recording();
+                    }
                 } else {
                     ui.horizontal(|ui| {
                         ui.label("Quelle:");
                         egui::ComboBox::from_id_source("monitor_select")
-                            .selected_text(self.selected_monitor_idx.and_then(|idx| self.monitors.get(idx)).map_or("Monitor auswählen", |m| m.name()))
+                            .selected_text(
+                                self.selected_monitor_idx
+                                    .and_then(|idx| self.monitors.get(idx))
+                                    .map_or("Monitor auswählen", |m| m.name()),
+                            )
                             .show_ui(ui, |ui| {
                                 for (i, monitor) in self.monitors.iter().enumerate() {
-                                    if ui.selectable_label(self.selected_monitor_idx == Some(i), monitor.name()).clicked() {
-                                        self.selected_monitor_idx = Some(i); self.selected_window_idx = None;
+                                    if ui
+                                        .selectable_label(
+                                            self.selected_monitor_idx == Some(i),
+                                            monitor.name(),
+                                        )
+                                        .clicked()
+                                    {
+                                        self.selected_monitor_idx = Some(i);
+                                        self.selected_window_idx = None;
                                     }
                                 }
                             });
                         egui::ComboBox::from_id_source("window_select")
-                            .selected_text(self.selected_window_idx.and_then(|idx| self.windows.get(idx)).map_or("Fenster auswählen", |w| w.title()))
+                            .selected_text(
+                                self.selected_window_idx
+                                    .and_then(|idx| self.windows.get(idx))
+                                    .map_or("Fenster auswählen", |w| w.title()),
+                            )
                             .show_ui(ui, |ui| {
                                 for (i, window) in self.windows.iter().enumerate() {
-                                    if ui.selectable_label(self.selected_window_idx == Some(i), window.title()).clicked() {
-                                        self.selected_window_idx = Some(i); self.selected_monitor_idx = None;
+                                    if ui
+                                        .selectable_label(
+                                            self.selected_window_idx == Some(i),
+                                            window.title(),
+                                        )
+                                        .clicked()
+                                    {
+                                        self.selected_window_idx = Some(i);
+                                        self.selected_monitor_idx = None;
                                     }
                                 }
                             });
-                        if ui.button("🔄").on_hover_text("Quellen aktualisieren").clicked() { self.refresh_capture_sources(); }
+                        if ui
+                            .button("🔄")
+                            .on_hover_text("Quellen aktualisieren")
+                            .clicked()
+                        {
+                            self.refresh_capture_sources();
+                        }
                     });
-                    let source_selected = self.selected_monitor_idx.is_some() || self.selected_window_idx.is_some();
-                    if ui.add_enabled(source_selected, egui::Button::new("⏺ Start Recording")).clicked() { self.start_windows_recording(); };
+                    let source_selected =
+                        self.selected_monitor_idx.is_some() || self.selected_window_idx.is_some();
+                    if ui
+                        .add_enabled(source_selected, egui::Button::new("⏺ Start Recording"))
+                        .clicked()
+                    {
+                        self.start_windows_recording();
+                    };
                 }
-                if let Some(err) = &self.last_error { ui.colored_label(egui::Color32::RED, err); }
+                if let Some(err) = &self.last_error {
+                    ui.colored_label(egui::Color32::RED, err);
+                }
             }
 
-            #[cfg(target_os = "linux")] { /* UI für Linux */ }
+            #[cfg(target_os = "linux")]
+            { /* UI für Linux */ }
 
-            #[cfg(not(any(target_os = "linux", target_os = "windows")))] {
+            #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+            {
                 ui.add_space(20.0);
                 ui.label(egui::RichText::new("ℹ️ Screen Recording Feature").strong());
                 ui.label("This feature is currently only available on Linux and Windows.");
@@ -344,7 +439,10 @@ impl eframe::App for RivuletApp {
                     ui.label("powered by ");
                     ui.hyperlink_to("egui", "https://github.com/emilk/egui");
                     ui.label(" and ");
-                    ui.hyperlink_to("eframe", "https://github.com/emilk/egui/tree/master/crates/eframe");
+                    ui.hyperlink_to(
+                        "eframe",
+                        "https://github.com/emilk/egui/tree/master/crates/eframe",
+                    );
                     ui.label(".");
                 });
             });
