@@ -1,20 +1,21 @@
 // In rivulet-core/src/lib.rs
 
-// Wir verwenden die Alias-Syntax für eine bessere Lesbarkeit.
-use ffmpeg::format::{input, Pixel};
-use ffmpeg::media::Type;
-use ffmpeg::software::scaling::{context::Context, flag::Flags};
-use ffmpeg::util::frame::video::Video;
-use ffmpeg_next as ffmpeg;
+use rusty_ffmpeg::avcodec::{AsCodec, Codec, VideoEncoder};
+use rusty_ffmpeg::avformat::format::ll::AV_PIX_FMT_YUV420P;
+use rusty_ffmpeg::avutil::{
+    frame::{Frame, Video},
+    pix_fmt::AVPixelFormat,
+    rational::AVRational,
+};
+use rusty_ffmpeg::error::RsmpegError;
+use rusty_ffmpeg::swscale::{self, SwsContext};
 
 pub struct RivuletEngine {
-    // Der Scaler ist zuständig für die Konvertierung des Farbraums (z.B. von RGBA nach YUV420p).
-    scaler: Option<Context>,
-    // Der Encoder komprimiert die konvertierten Frames in ein Videoformat (z.B. H.264).
-    encoder: Option<ffmpeg::encoder::video::Video>,
-    // Wir speichern die Zieldimensionen.
+    scaler: Option<SwsContext>,
+    encoder: Option<VideoEncoder>,
     width: u32,
     height: u32,
+    frame_count: i64,
     is_streaming: bool,
 }
 
@@ -23,77 +24,30 @@ impl Default for RivuletEngine {
         Self {
             scaler: None,
             encoder: None,
-            width: 1920,  // Standard-Breite, wird beim Start überschrieben
-            height: 1080, // Standard-Höhe, wird beim Start überschrieben
+            width: 0,
+            height: 0,
+            frame_count: 0,
             is_streaming: false,
         }
     }
 }
 
 impl RivuletEngine {
-    /// Erstellt eine neue Instanz der Engine und initialisiert FFmpeg.
     pub fn new() -> Self {
-        // Diese Funktion muss nur einmal pro Programmaufruf ausgeführt werden.
-        ffmpeg::init().expect("Fehler bei der Initialisierung von FFmpeg");
-        println!("[Engine] FFmpeg initialisiert.");
+        // Bei rusty_ffmpeg ist keine explizite init()-Funktion nötig.
+        println!("[Engine] Bereit.");
         Self::default()
     }
 
-    /// Startet das Streaming. Initialisiert den Encoder und Scaler.
     pub fn start_streaming(&mut self) {
         if self.is_streaming {
             return;
         }
         println!("[Engine] Streaming wird gestartet...");
-
-        // Wir müssen die Zieldimensionen kennen, bevor wir starten.
-        // In einer echten Anwendung würden Sie diese konfigurierbar machen.
-        // Für den Moment nehmen wir die Dimensionen des ersten Frames.
-        // Das ist ein Henne-Ei-Problem, das wir später lösen. Hier harte Werte.
-        self.width = 1920; // Beispiel
-        self.height = 1080; // Beispiel
-
-        // --- Encoder-Setup ---
-        let codec = ffmpeg::codec::encoder::find_by_name("libx264")
-            .expect("H.264 Encoder (libx264) nicht gefunden.");
-        let mut encoder_ctx = ffmpeg::codec::context::Context::new();
-        encoder_ctx.set_height(self.height);
-        encoder_ctx.set_width(self.width);
-        encoder_ctx.set_time_base((1, 60)); // Zeitbasis für 60 FPS
-        encoder_ctx.set_frame_rate(Some((60, 1))); // 60 FPS
-        encoder_ctx.set_format(Pixel::YUV420P); // Das Zielformat für H.264
-                                                // Wichtige Einstellung für Streaming mit niedriger Latenz
-        encoder_ctx.set_flags(ffmpeg::codec::flag::Flags::LOW_DELAY);
-
-        let mut encoder = encoder_ctx
-            .encoder()
-            .video()
-            .expect("Konnte Video-Encoder nicht öffnen.");
-        // Setzt Encoder-spezifische Optionen
-        encoder.set_option("preset", "ultrafast").unwrap();
-        encoder.set_option("tune", "zerolatency").unwrap();
-
-        self.encoder = Some(encoder);
-
-        // --- Scaler-Setup ---
-        let scaler = Context::get(
-            Pixel::RGBA,     // Quellformat (von Windows Capture)
-            self.width,      // Quellbreite
-            self.height,     // Quellhöhe
-            Pixel::YUV420P,  // Zielformat (für den Encoder)
-            self.width,      // Zielbreite
-            self.height,     // Zielhöhe
-            Flags::BILINEAR, // Skalierungsalgorithmus
-        )
-        .expect("Konnte Scaler nicht erstellen.");
-
-        self.scaler = Some(scaler);
-
+        self.frame_count = 0;
         self.is_streaming = true;
-        println!("[Engine] Streaming gestartet und Encoder/Scaler bereit.");
     }
 
-    /// Stoppt das Streaming und gibt Ressourcen frei.
     pub fn stop_streaming(&mut self) {
         if !self.is_streaming {
             return;
@@ -101,14 +55,13 @@ impl RivuletEngine {
         println!("[Engine] Streaming wird gestoppt...");
 
         if let Some(mut encoder) = self.encoder.take() {
-            // Signalisiere dem Encoder, dass keine Frames mehr kommen.
-            if encoder.send_eof().is_ok() {
-                let mut encoded = ffmpeg::Packet::empty();
-                // Leere den Encoder von allen verbleibenden Paketen.
-                while encoder.receive_packet(&mut encoded).is_ok() {
+            // Sende leeren Frame, um den Encoder zu flushen
+            match encoder.encode(None) {
+                Ok(Some(packet)) => {
                     println!("[Engine] Flushing-Paket empfangen.");
-                    // TODO: Sende dieses letzte Paket an die RTMP-Crate
+                    // TODO: Sende das letzte Paket an die RTMP-Crate
                 }
+                _ => {}
             }
         }
 
@@ -117,64 +70,103 @@ impl RivuletEngine {
         println!("[Engine] Streaming gestoppt.");
     }
 
-    /// Verarbeitet einen einzelnen rohen Bild-Frame.
+    fn initialize_ffmpeg(&mut self, width: u32, height: u32) -> Result<(), RsmpegError> {
+        println!(
+            "[Engine] Initialisiere FFmpeg für Auflösung {}x{}",
+            width, height
+        );
+        self.width = width;
+        self.height = height;
+
+        // --- Encoder-Setup ---
+        let codec = Codec::find_encoder_by_name("libx264").expect("H.264 Encoder nicht gefunden.");
+        let mut encoder = VideoEncoder::new(
+            codec,
+            width as i32,
+            height as i32,
+            AVPixelFormat::AV_PIX_FMT_YUV420P,
+        )?;
+
+        encoder.set_time_base(AVRational { num: 1, den: 60 });
+        encoder.set_gop_size(10);
+        encoder.set_max_b_frames(1);
+
+        // Optionen setzen
+        encoder.set_option("preset", "ultrafast")?;
+        encoder.set_option("tune", "zerolatency")?;
+
+        self.encoder = Some(encoder);
+
+        // --- Scaler-Setup ---
+        let scaler = SwsContext::get(
+            width as i32,
+            height as i32,
+            AVPixelFormat::AV_PIX_FMT_RGBA,
+            width as i32,
+            height as i32,
+            AVPixelFormat::AV_PIX_FMT_YUV420P,
+            swscale::SWS_BILINEAR,
+        )?;
+
+        self.scaler = Some(scaler);
+        Ok(())
+    }
+
     pub fn process_raw_frame(&mut self, frame_data: &[u8], width: u32, height: u32) {
-        if !self.is_streaming || self.encoder.is_none() || self.scaler.is_none() {
+        if !self.is_streaming {
             return;
         }
 
-        // Wenn sich die Auflösung geändert hat, müssen wir neu initialisieren.
-        // (Vereinfachung: Für den Moment ignorieren wir das und nehmen an, sie bleibt gleich)
-        if self.width != width || self.height != height {
-            println!("[Engine] Auflösungsänderung erkannt! (Nicht implementiert)");
-            // In einer echten App: stop_streaming() und start_streaming() mit neuen Dimensionen aufrufen.
-            return;
+        if self.encoder.is_none() {
+            if self.initialize_ffmpeg(width, height).is_err() {
+                eprintln!("[Engine] FFmpeg-Initialisierung fehlgeschlagen.");
+                self.is_streaming = false;
+                return;
+            }
         }
 
         let encoder = self.encoder.as_mut().unwrap();
         let scaler = self.scaler.as_mut().unwrap();
 
-        // 1. Erstelle einen FFmpeg-Frame aus den rohen RGBA-Daten.
-        let mut source_frame = unsafe { Video::from_slice(frame_data, Pixel::RGBA, width, height) };
-        source_frame.set_pts(Some(self.next_pts())); // Zeitstempel setzen
+        // 1. Erstelle einen Quell-Frame aus den RGBA-Daten.
+        let mut source_frame =
+            Video::new(AVPixelFormat::AV_PIX_FMT_RGBA, width as i32, height as i32).unwrap();
+        source_frame.get_data_mut(0).copy_from_slice(frame_data);
+        // `linesize` muss korrekt gesetzt werden!
+        source_frame.set_linesize(0, width as i32 * 4);
+        source_frame.set_pts(self.frame_count);
+        self.frame_count += 1;
 
-        // 2. Erstelle einen leeren Ziel-Frame für die konvertierten Daten.
-        let mut yuv_frame = Video::empty();
+        // 2. Erstelle einen leeren Ziel-Frame.
+        let mut yuv_frame = Video::new(
+            AVPixelFormat::AV_PIX_FMT_YUV420P,
+            width as i32,
+            height as i32,
+        )
+        .unwrap();
+        yuv_frame.set_pts(source_frame.get_pts());
 
-        // 3. Führe die Farbkonvertierung (Scaling) durch.
-        if scaler.run(&source_frame, &mut yuv_frame).is_err() {
+        // 3. Führe die Farbkonvertierung durch.
+        if scaler.scale(&source_frame, &mut yuv_frame).is_err() {
             eprintln!("[Engine] Fehler beim Skalieren des Frames.");
             return;
         }
-        yuv_frame.set_pts(source_frame.pts());
 
-        // 4. Sende den konvertierten Frame an den Encoder.
-        if encoder.send_frame(&yuv_frame).is_ok() {
-            let mut encoded = ffmpeg::Packet::empty();
-            // 5. Empfange alle komprimierten Pakete, die der Encoder eventuell ausgibt.
-            while encoder.receive_packet(&mut encoded).is_ok() {
+        // 4. Sende den konvertierten Frame an den Encoder und empfange Pakete.
+        match encoder.encode(Some(&yuv_frame)) {
+            Ok(Some(packet)) => {
                 println!(
                     "[Engine] Komprimiertes Paket empfangen, Größe: {} bytes.",
-                    encoded.size()
+                    packet.get_size()
                 );
-                // TODO: Sende das `encoded`-Paket an die RTMP-Crate.
+                // TODO: Sende das `packet` an die RTMP-Crate.
+            }
+            Ok(None) => {
+                // Encoder hat den Frame gepuffert, gibt noch kein Paket aus.
+            }
+            Err(e) => {
+                eprintln!("[Engine] Fehler beim Enkodieren: {:?}", e);
             }
         }
-    }
-
-    // Hilfsfunktion, um den Zeitstempel für jeden Frame zu erhöhen.
-    // Provisorische Implementierung.
-    fn next_pts(&mut self) -> i64 {
-        // In einer echten App bräuchten wir einen Frame-Zähler.
-        // `ffmpeg_next` bietet dafür leider keine direkte, einfache Lösung.
-        // Dies ist eine sehr vereinfachte Annäherung.
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let start = SystemTime::now();
-        let since_the_epoch = start
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
-
-        // Konvertiere zu Millisekunden und dann in unsere Zeitbasis.
-        (since_the_epoch.as_millis() * 60 / 1000) as i64
     }
 }
