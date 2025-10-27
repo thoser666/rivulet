@@ -1,15 +1,6 @@
-# Konfiguration für die GNU-Toolchain auf Windows
-[target.x86_64-pc-windows-gnu]
+# Konfiguration NUR für die Windows MSVC-Toolchain
+[target.x86_64-pc-windows-msvc]
 
-# Wir sagen dem Linker, welchen Linker er verwenden soll und wo er ihn findet.
-# 'rust-lld' ist der eingebaute Linker von Rust, der oft am besten funktioniert.
-# Wir geben ihm auch den Pfad zur GNU-Toolchain mit, damit er seine Hilfswerkzeuge findet.
-linker = "rust-lld.exe"
-rustflags = ["-L", "C:/msys64/mingw64/bin"]
-
-
-# Umgebungsvariablen für den Build-Prozess
-[target.x86_64-pc-windows-gnu.env]
-
-# Dies sagt `pkg-config`, wo die FFmpeg-Konfigurationsdateien (.pc) sind.
-PKG_CONFIG_PATH = "C:/ffmpeg/lib/pkgconfig"
+# Wir sagen dem Linker direkt, wo er die .lib-Dateien finden soll.
+# Dies ist der robusteste Weg für MSVC.
+rustflags = ["-L", "C:/ffmpeg/lib"]
