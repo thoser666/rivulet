@@ -15,5 +15,5 @@ parking_lot = "0.12"
 dirs = "6.0"
 toml = "0.9"
 async-trait = "0.1"
-#ffmpeg-next = "7.0"
-rusty_ffmpeg = { version = "0.16.7", features = ["link_vcpkg_ffmpeg"] }
+ffmpeg-next = "7.0"
+#rusty_ffmpeg = "0.16.7+ffmpeg.8"

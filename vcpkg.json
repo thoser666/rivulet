@@ -3,5 +3,8 @@
   "version-string": "1.0.0",
   "dependencies": [
     "ffmpeg"
-  ]
+  ],
+  "vcpkg-configuration": {
+    "default-triplet": "x64-windows-static-md"
+  }
 }
