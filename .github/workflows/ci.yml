@@ -39,7 +39,9 @@ jobs:
             gstreamer1.0-plugins-ugly \
             gstreamer1.0-libav \
             gstreamer1.0-tools \
-            libglib2.0-dev
+            libglib2.0-dev \
+            libpipewire-0.3-dev \
+            libspa-0.2-dev
 
       - name: Check formatting
         run: cargo fmt --all -- --check
