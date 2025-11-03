@@ -17,7 +17,7 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 eframe = "0.33"
-egui = "0.32"
+egui = "0.33"
 egui_extras = "0.33"
 rfd = "0.14"
 poll-promise = "0.3"
