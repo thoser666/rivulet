@@ -19,7 +19,7 @@ tracing-subscriber = { workspace = true }
 eframe = "0.33"
 egui = "0.32"
 egui_extras = "0.33"
-rfd = "0.14"
+rfd = "0.15"
 poll-promise = "0.3"
 chrono = "0.4"
 image = "0.25" # for PNG Export later
