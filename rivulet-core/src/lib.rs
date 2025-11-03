@@ -123,7 +123,9 @@ impl RivuletEngine {
             {
                 // Obtain a mutable reference to the buffer memory and map it writable
                 let buffer_ref = buffer.get_mut().expect("Buffer should be uniquely owned");
-                let mut map = buffer_ref.map_writable().expect("Failed to map buffer writable");
+                let mut map = buffer_ref
+                    .map_writable()
+                    .expect("Failed to map buffer writable");
                 map.as_mut_slice().copy_from_slice(frame_data);
             }
 

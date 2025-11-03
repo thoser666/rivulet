@@ -81,9 +81,7 @@ impl GraphicsCaptureApiHandler for CaptureHandler {
         }
 
         let mut frame_buffer: FrameBuffer = frame.buffer()?;
-        let data = frame_buffer
-            .as_nopadding_buffer()
-            .map(|buf| buf.to_vec())?;
+        let data = frame_buffer.as_nopadding_buffer().map(|buf| buf.to_vec())?;
 
         let raw_frame = RawFrame {
             data,
@@ -392,7 +390,10 @@ impl eframe::App for RivuletApp {
                             .selected_text(
                                 self.selected_monitor_idx
                                     .and_then(|idx| self.monitors.get(idx))
-                                    .map(|m| m.name().unwrap_or_else(|_| "Unbenannter Monitor".to_string()))
+                                    .map(|m| {
+                                        m.name()
+                                            .unwrap_or_else(|_| "Unbenannter Monitor".to_string())
+                                    })
                                     .unwrap_or_else(|| "Monitor auswählen".to_string()),
                             )
                             .show_ui(ui, |ui| {
@@ -400,9 +401,9 @@ impl eframe::App for RivuletApp {
                                     if ui
                                         .selectable_label(
                                             self.selected_monitor_idx == Some(i),
-                                            monitor
-                                                .name()
-                                                .unwrap_or_else(|_| "Unbenannter Monitor".to_string()),
+                                            monitor.name().unwrap_or_else(|_| {
+                                                "Unbenannter Monitor".to_string()
+                                            }),
                                         )
                                         .clicked()
                                     {
