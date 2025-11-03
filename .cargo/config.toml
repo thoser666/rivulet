@@ -1,6 +1,0 @@
-# Konfiguration NUR für die Windows MSVC-Toolchain
-[target.x86_64-pc-windows-msvc]
-
-# Wir sagen dem Linker direkt, wo er die .lib-Dateien finden soll.
-# Dies ist der robusteste Weg für MSVC.
-rustflags = ["-L", "C:/ffmpeg/lib"]

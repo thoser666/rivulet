@@ -19,12 +19,10 @@ async-trait = "0.1"
 #rusty_ffmpeg = "0.16.7+ffmpeg.8"
 #rusty_ffmpeg = { version = "0.16.7+ffmpeg.8", features = ["link_vcpkg_ffmpeg"] }
 
-# Haupt-GStreamer-Crate
 gstreamer = "0.22"
-# Crate für das AppSrc-Element, um unsere Daten einzuspeisen
 gstreamer-app = "0.22"
-# Crate für die Video-Elemente
 gstreamer-video = "0.22"
+gstreamer-pbutils = "0.22"
 
 # Diese Crate wird oft als Hilfsbibliothek benötigt
 glib = "0.19"

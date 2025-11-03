@@ -1,12 +1,14 @@
 // In rivulet-core/src/lib.rs
 
 use glib;
+use glib::prelude::Cast;
 use gstreamer as gst;
+use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
 use gstreamer_video as gst_video;
 use once_cell::sync::Lazy;
 
-// GStreamer muss nur einmal initialisiert werden.
+// GStreamer-Initialisierung bleibt gleich
 static GSTREAMER_INIT: Lazy<()> = Lazy::new(|| {
     gst::init().expect("GStreamer-Initialisierung fehlgeschlagen.");
 });
@@ -19,7 +21,6 @@ pub struct RivuletEngine {
 
 impl Default for RivuletEngine {
     fn default() -> Self {
-        // Sicherstellen, dass GStreamer initialisiert ist.
         Lazy::force(&GSTREAMER_INIT);
         Self {
             pipeline: None,
@@ -41,27 +42,25 @@ impl RivuletEngine {
         }
         println!("[Engine] Streaming wird gestartet...");
 
-        let rtmp_url = "rtmp://localhost/live/stream"; // Beispiel-URL
+        let rtmp_url = "rtmp://localhost/live/stream";
 
-        // Die Pipeline als Textbeschreibung erstellen - das ist die Stärke von GStreamer!
         let pipeline_str = format!(
             "appsrc name=rivulet_src ! videoconvert ! x264enc tune=zerolatency ! flvmux ! rtmpsink location={}",
             rtmp_url
         );
 
-        let pipeline = gst::parse_launch(&pipeline_str)
+        // Verwende die korrekte Parse-Funktion aus der gstreamer-Crate
+        let pipeline = gst::parse::launch(&pipeline_str)
             .expect("Pipeline konnte nicht erstellt werden.")
             .downcast::<gst::Pipeline>()
             .unwrap();
 
-        // Das appsrc-Element aus der Pipeline holen, um Daten hineinzuschieben.
         let appsrc = pipeline
             .by_name("rivulet_src")
             .expect("Konnte appsrc-Element nicht finden.")
             .downcast::<gst_app::AppSrc>()
             .unwrap();
 
-        // Konfigurieren von appsrc: Wir sagen ihm, welches Videoformat wir senden.
         let video_info = gst_video::VideoInfo::builder(gst_video::VideoFormat::Rgba, width, height)
             .fps((60, 1))
             .build()
@@ -71,7 +70,6 @@ impl RivuletEngine {
         appsrc.set_property("is-live", true);
         appsrc.set_property("do-timestamp", true);
 
-        // Pipeline starten
         pipeline
             .set_state(gst::State::Playing)
             .expect("Pipeline konnte nicht gestartet werden.");
@@ -82,6 +80,7 @@ impl RivuletEngine {
         println!("[Engine] GStreamer-Pipeline läuft.");
     }
 
+    // `stop_streaming` und `process_raw_frame` bleiben identisch
     pub fn stop_streaming(&mut self) {
         if !self.is_streaming {
             return;
@@ -89,7 +88,6 @@ impl RivuletEngine {
         println!("[Engine] Streaming wird gestoppt...");
 
         if let Some(pipeline) = self.pipeline.take() {
-            // Pipeline anhalten und Ressourcen freigeben
             pipeline
                 .set_state(gst::State::Null)
                 .expect("Pipeline konnte nicht gestoppt werden.");
@@ -101,20 +99,17 @@ impl RivuletEngine {
 
     pub fn process_raw_frame(&mut self, frame_data: &[u8], width: u32, height: u32) {
         if !self.is_streaming {
-            // Beim ersten Frame das Streaming initial starten
             self.start_streaming(width, height);
         }
 
         if let Some(appsrc) = &self.appsrc {
-            // Erstelle einen GStreamer-Buffer aus den rohen Daten.
-            // Wir müssen die Daten kopieren, da der Buffer sie besitzen muss.
             let mut buffer = gst::Buffer::with_size(frame_data.len()).unwrap();
             {
-                let mut map = buffer.map_writable().unwrap();
-                map.copy_from_slice(frame_data);
+                let buffer_ref = buffer.get_mut().expect("Failed to get mutable BufferRef");
+                let mut map = buffer_ref.map_writable().unwrap();
+                map.as_mut_slice().copy_from_slice(frame_data);
             }
 
-            // Schiebe den Buffer in die Pipeline.
             if let Err(err) = appsrc.push_buffer(buffer) {
                 eprintln!(
                     "[Engine] Fehler beim Senden des Frames in die Pipeline: {:?}",
