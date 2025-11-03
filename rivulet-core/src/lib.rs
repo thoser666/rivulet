@@ -1,90 +1,141 @@
-use std::sync::Arc;
-use parking_lot::RwLock;
-use uuid::Uuid;
+// In rivulet-core/src/lib.rs
 
-pub mod scene;
-pub mod source;
-pub mod output;
-pub mod config;
+use gstreamer as gst;
+use gstreamer_app as gst_app;
+use gstreamer_video as gst_video;
+use once_cell::sync::Lazy;
+// Der entscheidende Import
+use gst::prelude::*;
 
-pub use scene::*;
-pub use source::*;
-pub use output::*;
-pub use config::*;
+// GStreamer-Initialisierung
+static GSTREAMER_INIT: Lazy<()> = Lazy::new(|| {
+    gst::init().expect("GStreamer-Initialisierung fehlgeschlagen.");
+});
 
-/// The main Rivulet engine that manages scenes, sources, and outputs
-#[derive(Debug)]
 pub struct RivuletEngine {
-    scenes: Arc<RwLock<Vec<Scene>>>,
-    active_scene: Arc<RwLock<Option<Uuid>>>,
-    outputs: Arc<RwLock<Vec<Box<dyn Output>>>>,
-    config: Arc<RwLock<Config>>,
+    pipeline: Option<gst::Pipeline>,
+    appsrc: Option<gst_app::AppSrc>,
+    is_streaming: bool,
+}
+
+impl Default for RivuletEngine {
+    fn default() -> Self {
+        Lazy::force(&GSTREAMER_INIT);
+        Self {
+            pipeline: None,
+            appsrc: None,
+            is_streaming: false,
+        }
+    }
 }
 
 impl RivuletEngine {
-    pub fn new() -> anyhow::Result<Self> {
-        tracing::info!("Initializing Rivulet Engine");
-
-        Ok(Self {
-            scenes: Arc::new(RwLock::new(Vec::new())),
-            active_scene: Arc::new(RwLock::new(None)),
-            outputs: Arc::new(RwLock::new(Vec::new())),
-            config: Arc::new(RwLock::new(Config::default())),
-        })
+    pub fn new() -> Self {
+        println!("[Engine] GStreamer bereit.");
+        Self::default()
     }
 
-    pub fn add_scene(&self, scene: Scene) -> anyhow::Result<Uuid> {
-        let scene_id = scene.id;
-        let mut scenes = self.scenes.write();
-        scenes.push(scene);
+    /// Privater Helfer, um die GStreamer-Pipeline zu erstellen und zu starten.
+    fn initialize_and_start_pipeline(&mut self, width: u32, height: u32) {
+        println!(
+            "[Engine] Initialisiere GStreamer-Pipeline für Auflösung {}x{}",
+            width, height
+        );
 
-        if scenes.len() == 1 {
-            *self.active_scene.write() = Some(scene_id);
+        let rtmp_url = "rtmp://localhost/live/stream";
+
+        let pipeline_str = format!(
+            "appsrc name=rivulet_src ! videoconvert ! x264enc tune=zerolatency ! flvmux ! rtmpsink location={}",
+            rtmp_url
+        );
+
+        // KORREKTUR: Die `parse_launch`-Funktion ist im `gst::parse`-Modul, wenn das Feature aktiv ist.
+        let pipeline = match gst::parse::launch(&pipeline_str) {
+            Ok(p) => p.downcast::<gst::Pipeline>().unwrap(),
+            Err(e) => {
+                eprintln!("[Engine] Fehler beim Erstellen der Pipeline: {}", e);
+                return;
+            }
+        };
+
+        // Der Rest des Codes ist korrekt...
+        let appsrc = pipeline
+            .by_name("rivulet_src")
+            .expect("Konnte appsrc-Element 'rivulet_src' nicht in der Pipeline finden.")
+            .downcast::<gst_app::AppSrc>()
+            .unwrap();
+
+        let video_info = gst_video::VideoInfo::builder(gst_video::VideoFormat::Rgba, width, height)
+            .fps((60, 1))
+            .build()
+            .unwrap();
+        appsrc.set_caps(Some(&video_info.to_caps().unwrap()));
+
+        appsrc.set_property("format", gst::Format::Time);
+        appsrc.set_property("is-live", true);
+        appsrc.set_property("do-timestamp", true);
+
+        if pipeline.set_state(gst::State::Playing).is_err() {
+            eprintln!("[Engine] Pipeline konnte nicht gestartet werden.");
+            return;
         }
 
-        tracing::info!("Added scene: {}", scene_id);
-        Ok(scene_id)
+        self.pipeline = Some(pipeline);
+        self.appsrc = Some(appsrc);
+        println!("[Engine] GStreamer-Pipeline läuft.");
     }
 
-    pub fn switch_scene(&self, scene_id: Uuid) -> anyhow::Result<()> {
-        let scenes = self.scenes.read();
-        if scenes.iter().any(|s| s.id == scene_id) {
-            *self.active_scene.write() = Some(scene_id);
-            tracing::info!("Switched to scene: {}", scene_id);
-            Ok(())
-        } else {
-            anyhow::bail!("Scene not found: {}", scene_id);
+    pub fn start_streaming(&mut self) {
+        if self.is_streaming {
+            return;
         }
+        println!("[Engine] Streaming wird vorbereitet. Warte auf ersten Frame...");
+        self.is_streaming = true;
     }
 
-    pub fn get_active_scene(&self) -> Option<Scene> {
-        let active_id = self.active_scene.read().clone()?;
-        let scenes = self.scenes.read();
-        scenes.iter().find(|s| s.id == active_id).cloned()
-    }
-
-    pub fn add_output(&self, output: Box<dyn Output>) -> anyhow::Result<()> {
-        let mut outputs = self.outputs.write();
-        outputs.push(output);
-        tracing::info!("Added output, total: {}", outputs.len());
-        Ok(())
-    }
-
-    pub async fn start_output(&self) -> anyhow::Result<()> {
-        let outputs = self.outputs.read();
-        for output in outputs.iter() {
-            output.start().await?;
+    pub fn stop_streaming(&mut self) {
+        if !self.is_streaming {
+            return;
         }
-        tracing::info!("Started all outputs");
-        Ok(())
+        println!("[Engine] Streaming wird gestoppt...");
+
+        if let Some(pipeline) = self.pipeline.take() {
+            pipeline
+                .set_state(gst::State::Null)
+                .expect("Pipeline konnte nicht gestoppt werden.");
+        }
+        self.appsrc = None;
+        self.is_streaming = false;
+        println!("[Engine] Streaming gestoppt.");
     }
 
-    pub async fn stop_output(&self) -> anyhow::Result<()> {
-        let outputs = self.outputs.read();
-        for output in outputs.iter() {
-            output.stop().await?;
+    pub fn process_raw_frame(&mut self, frame_data: &[u8], width: u32, height: u32) {
+        if !self.is_streaming {
+            return;
         }
-        tracing::info!("Stopped all outputs");
-        Ok(())
+
+        if self.pipeline.is_none() {
+            self.initialize_and_start_pipeline(width, height);
+        }
+
+        if let Some(appsrc) = &self.appsrc {
+            let mut buffer = gst::Buffer::with_size(frame_data.len()).unwrap();
+            {
+                // Obtain a mutable reference to the buffer memory and map it writable
+                let buffer_ref = buffer.get_mut().expect("Buffer should be uniquely owned");
+                let mut map = buffer_ref
+                    .map_writable()
+                    .expect("Failed to map buffer writable");
+                map.as_mut_slice().copy_from_slice(frame_data);
+            }
+
+            if let Err(err) = appsrc.push_buffer(buffer) {
+                eprintln!(
+                    "[Engine] Fehler beim Senden des Frames in die Pipeline: {:?}",
+                    err
+                );
+                self.stop_streaming();
+            }
+        }
     }
 }

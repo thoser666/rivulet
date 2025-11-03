@@ -1,55 +1,48 @@
-use eframe::egui;
-use rivulet_core::*;
-use rivulet_obs_compat::PluginManager;
-use tracing_subscriber::EnvFilter;
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
 
-use app::RivuletApp;
+use crate::app::RivuletApp;
+use eframe::egui::{self, IconData};
+use rivulet_core::RivuletEngine;
+// Tokio wird hier nicht mehr benötigt, aber wir lassen es für potenzielle andere Aufgaben.
+use tokio::runtime::Runtime;
 
-fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("rivulet=debug,info"))
-        )
-        .init();
+fn main() -> Result<(), eframe::Error> {
+    tracing_subscriber::fmt::init();
 
-    tracing::info!("Starting Rivulet GUI");
+    let _rt = Runtime::new().unwrap();
+    let engine = RivuletEngine::new();
 
-    if let Err(e) = PluginManager::initialize() {
-        tracing::warn!("Failed to initialize OBS compatibility: {}", e);
-    }
+    run_native("Rivulet", engine)
+}
 
-    let options = eframe::NativeOptions {
+fn run_native(app_name: &str, engine: RivuletEngine) -> Result<(), eframe::Error> {
+    let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("Rivulet - Streaming Software")
-            .with_inner_size([1200.0, 800.0])
-            .with_min_inner_size([800.0, 600.0]),
+            .with_inner_size(egui::vec2(800.0, 600.0))
+            .with_title(app_name)
+            .with_icon(create_icon())
+            .with_app_id("rivulet_main_window"),
         ..Default::default()
     };
 
-    if let Err(e) = eframe::run_native(
-        "Rivulet",
-        options,
+    eframe::run_native(
+        app_name,
+        native_options,
         Box::new(|cc| {
-            let rt = tokio::runtime::Runtime::new()
-                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
-                    Box::new(e)
-                })?;
-
-            let engine = rt.block_on(async {
-                RivuletEngine::new()
-                    .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
-                        let boxed: Box<dyn std::error::Error + Send + Sync> = e.into();
-                        boxed
-                    })
-            })?;
-
-            Ok(Box::new(RivuletApp::new(cc, engine, rt)))
+            // Der Aufruf ist wieder einfach, die App verwaltet ihre Kommunikation intern.
+            let app = RivuletApp::new(cc, engine);
+            Box::new(app)
         }),
-    ) {
-        tracing::error!("Application error: {}", e);
-        std::process::exit(1);
+    )
+}
+
+fn create_icon() -> IconData {
+    let image = image::RgbaImage::from_fn(64, 64, |_x, _y| image::Rgba([33, 150, 243, 255]));
+    IconData {
+        rgba: image.into_raw(),
+        width: 64,
+        height: 64,
     }
 }

@@ -55,13 +55,15 @@ impl FileOutput {
 impl Output for FileOutput {
     async fn start(&self) -> anyhow::Result<()> {
         tracing::info!("Starting file recording to: {}", self.file_path);
-        self.active.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.active
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         Ok(())
     }
 
     async fn stop(&self) -> anyhow::Result<()> {
         tracing::info!("Stopping file recording");
-        self.active.store(false, std::sync::atomic::Ordering::Relaxed);
+        self.active
+            .store(false, std::sync::atomic::Ordering::Relaxed);
         Ok(())
     }
 

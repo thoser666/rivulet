@@ -2,8 +2,7 @@ use anyhow::Result;
 
 pub mod screen;
 
-#[cfg(windows)]
-pub use screen::windows::DxgiScreenCapture;
+pub use screen::XCapScreenCapture;
 
 pub trait CaptureSource {
     /// Start capturing
@@ -22,7 +21,7 @@ pub trait CaptureSource {
     fn is_capturing(&self) -> bool;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CapturedFrame {
     pub data: Vec<u8>,
     pub width: u32,

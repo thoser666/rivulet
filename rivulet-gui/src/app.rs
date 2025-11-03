@@ -1,274 +1,483 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![allow(unused_imports, dead_code, unused_variables)]
+
 use eframe::egui;
-use rivulet_core::*;
+use rivulet_core::RivuletEngine;
 
-#[cfg(windows)]
-use rivulet_capture::{CaptureSource, DxgiScreenCapture};
+// --- Linux-spezifische Imports ---
+#[cfg(target_os = "linux")]
+use {
+    ashpd::desktop::file_chooser::{FileChooser, FileFilter},
+    ashpd::desktop::screencast::{CursorMode, Screencast, Session, Source, Stream},
+    ashpd::enumflags2::BitFlags,
+    ashpd::WindowIdentifier,
+    once_cell::sync::Lazy,
+    pipewire::{spa::param::video::VideoFormat, types::Fd},
+    std::sync::mpsc as std_mpsc,
+    tokio::runtime::Runtime,
+};
 
-#[cfg(windows)]
-use std::sync::{Arc, Mutex};
+// --- ENDGÜLTIG KORREKTE Windows-Imports für v1.5.0 ---
+#[cfg(target_os = "windows")]
+use {
+    std::sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, Receiver, Sender},
+        Arc,
+    },
+    std::thread,
+    windows_capture::{
+        capture::{Context, GraphicsCaptureApiHandler},
+        frame::{Frame, FrameBuffer},
+        graphics_capture_api::InternalCaptureControl, // KORREKTUR 1: Der wahre Import-Pfad
+        monitor::Monitor,
+        settings::{
+            ColorFormat, CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings,
+            MinimumUpdateIntervalSettings, SecondaryWindowSettings, Settings,
+        },
+        window::Window,
+    },
+};
 
-use std::time::Instant;
-
-pub struct RivuletApp {
-    #[cfg(windows)]
-    capture: Option<Arc<Mutex<DxgiScreenCapture>>>,
-    #[cfg(windows)]
-    capture_active: bool,
-    #[cfg(windows)]
-    current_frame: Option<CapturedFrameData>,
-    #[cfg(windows)]
-    preview_texture: Option<egui::TextureHandle>,
-
-    #[cfg(windows)]
-    fps: f32,
-    #[cfg(windows)]
-    last_frame_time: Instant,
-    #[cfg(windows)]
-    frame_count: u32,
-}
-
-#[cfg(windows)]
-struct CapturedFrameData {
+// --- Datenstruktur für rohe Frames ---
+#[cfg(target_os = "windows")]
+#[derive(Debug)]
+struct RawFrame {
     data: Vec<u8>,
     width: u32,
     height: u32,
-    stride: u32,
+}
+
+// --- Windows Handler-Struktur ---
+#[cfg(target_os = "windows")]
+struct CaptureHandler {
+    frame_sender: Sender<RawFrame>,
+    stop_signal: Arc<AtomicBool>,
+}
+
+#[cfg(target_os = "windows")]
+impl GraphicsCaptureApiHandler for CaptureHandler {
+    type Flags = (Sender<RawFrame>, Arc<AtomicBool>);
+    type Error = Box<dyn std::error::Error + Send + Sync>;
+
+    fn new(context: Context<Self::Flags>) -> Result<Self, Self::Error> {
+        let (sender, signal) = context.flags;
+        Ok(Self {
+            frame_sender: sender,
+            stop_signal: signal,
+        })
+    }
+
+    // KORREKTUR 2: Die Methodensignatur, wie vom Compiler ursprünglich gefordert.
+    fn on_frame_arrived(
+        &mut self,
+        frame: &mut Frame,
+        capture_control: InternalCaptureControl,
+    ) -> Result<(), Self::Error> {
+        if self.stop_signal.load(Ordering::SeqCst) {
+            println!("Stopp-Signal empfangen, beende Aufnahme.");
+            capture_control.stop();
+            return Ok(());
+        }
+
+        let mut frame_buffer: FrameBuffer = frame.buffer()?;
+        let data = frame_buffer.as_nopadding_buffer().map(|buf| buf.to_vec())?;
+
+        let raw_frame = RawFrame {
+            data,
+            width: frame.width(),
+            height: frame.height(),
+        };
+
+        if self.frame_sender.send(raw_frame).is_err() {
+            println!("GUI-Kanal geschlossen, beende Aufnahme.");
+            capture_control.stop();
+        }
+
+        Ok(())
+    }
+
+    fn on_closed(&mut self) -> Result<(), Self::Error> {
+        println!("Aufnahmesession wurde vom System beendet.");
+        self.stop_signal.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+// --- Linux-spezifische Typen ---
+#[cfg(target_os = "linux")]
+static TOKIO_RT: Lazy<Runtime> = Lazy::new(|| tokio::runtime::Runtime::new().unwrap());
+
+#[cfg(target_os = "linux")]
+enum BackendMessage {
+    Stream(Stream, Fd),
+    Recording(Fd),
+    Done,
+    Error(anyhow::Error),
+}
+
+/// Die Hauptanwendungsstruktur.
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct RivuletApp {
+    #[serde(skip)]
+    engine: RivuletEngine,
+    #[cfg(target_os = "linux")]
+    #[serde(skip)]
+    is_previewing: bool,
+    #[cfg(target_os = "linux")]
+    #[serde(skip)]
+    is_recording: bool,
+    #[cfg(target_os = "linux")]
+    #[serde(skip)]
+    screencast: Screencast,
+    #[cfg(target_os = "linux")]
+    #[serde(skip)]
+    session: Option<Session<'static>>,
+    #[cfg(target_os = "linux")]
+    #[serde(skip)]
+    stream: Option<Stream>,
+    #[cfg(target_os = "linux")]
+    #[serde(skip)]
+    pipewire_fd: Option<Fd>,
+    #[cfg(target_os = "linux")]
+    #[serde(skip)]
+    sender: std_mpsc::Sender<BackendMessage>,
+    #[cfg(target_os = "linux")]
+    #[serde(skip)]
+    receiver: std_mpsc::Receiver<BackendMessage>,
+    #[cfg(target_os = "windows")]
+    #[serde(skip)]
+    is_windows_recording: bool,
+    #[cfg(target_os = "windows")]
+    #[serde(skip)]
+    monitors: Vec<Monitor>,
+    #[cfg(target_os = "windows")]
+    #[serde(skip)]
+    windows: Vec<Window>,
+    #[cfg(target_os = "windows")]
+    #[serde(skip)]
+    selected_monitor_idx: Option<usize>,
+    #[cfg(target_os = "windows")]
+    #[serde(skip)]
+    selected_window_idx: Option<usize>,
+    #[cfg(target_os = "windows")]
+    #[serde(skip)]
+    frame_receiver: Option<Receiver<RawFrame>>,
+    #[cfg(target_os = "windows")]
+    #[serde(skip)]
+    stop_signal: Option<Arc<AtomicBool>>,
+    #[cfg(target_os = "windows")]
+    #[serde(skip)]
+    last_error: Option<String>,
+}
+
+impl Default for RivuletApp {
+    fn default() -> Self {
+        #[cfg(target_os = "linux")]
+        let (sender, receiver) = std_mpsc::channel();
+        Self {
+            engine: Default::default(),
+            #[cfg(target_os = "linux")]
+            is_previewing: false,
+            #[cfg(target_os = "linux")]
+            is_recording: false,
+            #[cfg(target_os = "linux")]
+            screencast: Screencast::new(),
+            #[cfg(target_os = "linux")]
+            session: None,
+            #[cfg(target_os = "linux")]
+            stream: None,
+            #[cfg(target_os = "linux")]
+            pipewire_fd: None,
+            #[cfg(target_os = "linux")]
+            sender,
+            #[cfg(target_os = "linux")]
+            receiver,
+            #[cfg(target_os = "windows")]
+            is_windows_recording: false,
+            #[cfg(target_os = "windows")]
+            monitors: Vec::new(),
+            #[cfg(target_os = "windows")]
+            windows: Vec::new(),
+            #[cfg(target_os = "windows")]
+            selected_monitor_idx: None,
+            #[cfg(target_os = "windows")]
+            selected_window_idx: None,
+            #[cfg(target_os = "windows")]
+            frame_receiver: None,
+            #[cfg(target_os = "windows")]
+            stop_signal: None,
+            #[cfg(target_os = "windows")]
+            last_error: None,
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl RivuletApp {
+    fn refresh_capture_sources(&mut self) {
+        self.monitors = Monitor::enumerate().unwrap_or_default();
+        self.windows = windows_capture::window::Window::enumerate()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|w| {
+                let title_ok = w.title().unwrap_or_default();
+                !title_ok.is_empty()
+            })
+            .collect();
+        self.selected_monitor_idx = None;
+        self.selected_window_idx = None;
+    }
+    fn start_windows_recording(&mut self) {
+        // Prepare channel and stop signal first
+        let (sender, receiver) = mpsc::channel();
+        self.frame_receiver = Some(receiver);
+
+        let stop_signal = Arc::new(AtomicBool::new(false));
+        self.stop_signal = Some(stop_signal.clone());
+
+        let flags = (sender, stop_signal);
+
+        // Decide which source to use and start with concrete settings type per branch
+        if let Some(idx) = self.selected_monitor_idx {
+            let Some(monitor) = self.monitors.get(idx).cloned() else {
+                self.last_error = Some("Ausgewählter Monitor ist ungültig.".to_string());
+                return;
+            };
+
+            self.is_windows_recording = true;
+            self.last_error = None;
+            self.engine.start_streaming();
+
+            thread::spawn(move || {
+                let settings = Settings::new(
+                    monitor,
+                    CursorCaptureSettings::Default,
+                    DrawBorderSettings::Default,
+                    SecondaryWindowSettings::Default,
+                    MinimumUpdateIntervalSettings::Default,
+                    DirtyRegionSettings::Default,
+                    ColorFormat::Rgba8,
+                    flags,
+                );
+                println!("Starte Aufnahme-Thread...");
+                if let Err(e) = CaptureHandler::start(settings) {
+                    if !e.to_string().contains("Benutzer gestoppt")
+                        && !e.to_string().contains("GUI-Kanal geschlossen")
+                    {
+                        eprintln!("Fehler im Aufnahme-Thread: {}", e);
+                    }
+                }
+                println!("Aufnahme-Thread beendet.");
+            });
+        } else if let Some(idx) = self.selected_window_idx {
+            let Some(window) = self.windows.get(idx).cloned() else {
+                self.last_error = Some("Ausgewähltes Fenster ist ungültig.".to_string());
+                return;
+            };
+
+            self.is_windows_recording = true;
+            self.last_error = None;
+            self.engine.start_streaming();
+
+            thread::spawn(move || {
+                let settings = Settings::new(
+                    window,
+                    CursorCaptureSettings::Default,
+                    DrawBorderSettings::Default,
+                    SecondaryWindowSettings::Default,
+                    MinimumUpdateIntervalSettings::Default,
+                    DirtyRegionSettings::Default,
+                    ColorFormat::Rgba8,
+                    flags,
+                );
+                println!("Starte Aufnahme-Thread...");
+                if let Err(e) = CaptureHandler::start(settings) {
+                    if !e.to_string().contains("Benutzer gestoppt")
+                        && !e.to_string().contains("GUI-Kanal geschlossen")
+                    {
+                        eprintln!("Fehler im Aufnahme-Thread: {}", e);
+                    }
+                }
+                println!("Aufnahme-Thread beendet.");
+            });
+        } else {
+            self.last_error = Some("Keine Aufnahmequelle ausgewählt.".to_string());
+            return;
+        }
+    }
+    fn stop_windows_recording(&mut self) {
+        println!("Sende Stopp-Signal.");
+        if let Some(signal) = &self.stop_signal {
+            signal.store(true, Ordering::SeqCst);
+        }
+        self.is_windows_recording = false;
+        self.engine.stop_streaming();
+        self.frame_receiver = None;
+        self.stop_signal = None;
+    }
 }
 
 impl RivuletApp {
-    pub fn new(
-        _cc: &eframe::CreationContext<'_>,
-        _engine: RivuletEngine,
-        _rt: tokio::runtime::Runtime,
-    ) -> Self {
-        Self {
-            #[cfg(windows)]
-            capture: None,
-            #[cfg(windows)]
-            capture_active: false,
-            #[cfg(windows)]
-            current_frame: None,
-            #[cfg(windows)]
-            preview_texture: None,
-            #[cfg(windows)]
-            fps: 0.0,
-            #[cfg(windows)]
-            last_frame_time: Instant::now(),
-            #[cfg(windows)]
-            frame_count: 0,
+    pub fn new(cc: &eframe::CreationContext<'_>, engine: RivuletEngine) -> Self {
+        let mut app = Self::default();
+        app.engine = engine;
+        #[cfg(target_os = "windows")]
+        {
+            app.refresh_capture_sources();
         }
-    }
-
-    #[cfg(windows)]
-    fn start_capture(&mut self) {
-        tracing::info!("Starting screen capture from GUI");
-
-        match DxgiScreenCapture::new(0) {
-            Ok(mut capture_device) => {
-                if let Err(e) = capture_device.start() {
-                    tracing::error!("Failed to start capture: {}", e);
-                    return;
-                }
-
-                self.capture = Some(Arc::new(Mutex::new(capture_device)));
-                self.capture_active = true;
-                self.last_frame_time = Instant::now();
-                self.frame_count = 0;
-
-                tracing::info!("Capture started successfully");
-            }
-            Err(e) => {
-                tracing::error!("Failed to create capture device: {}", e);
-            }
-        }
-    }
-
-    #[cfg(windows)]
-    fn stop_capture(&mut self) {
-        tracing::info!("Stopping screen capture");
-
-        if let Some(capture) = &self.capture {
-            if let Ok(mut cap) = capture.lock() {
-                let _ = cap.stop();
-            }
-        }
-
-        self.capture = None;
-        self.capture_active = false;
-        self.current_frame = None;
-        self.preview_texture = None;
-
-        tracing::info!("Capture stopped");
-    }
-
-    #[cfg(windows)]
-    fn update_capture(&mut self, ctx: &egui::Context) {
-        if !self.capture_active {
-            return;
-        }
-
-        let capture = match &self.capture {
-            Some(c) => c.clone(),
-            None => return,
-        };
-
-        let frame_result = {
-            let mut cap = match capture.lock() {
-                Ok(guard) => guard,
-                Err(_) => return,
-            };
-
-            cap.capture_frame()
-        };
-
-        match frame_result {
-            Ok(Some(frame)) => {
-                self.frame_count += 1;
-                let now = Instant::now();
-                let elapsed = now.duration_since(self.last_frame_time).as_secs_f32();
-
-                if elapsed >= 1.0 {
-                    self.fps = self.frame_count as f32 / elapsed;
-                    self.frame_count = 0;
-                    self.last_frame_time = now;
-                }
-
-                self.current_frame = Some(CapturedFrameData {
-                    data: frame.data,
-                    width: frame.width,
-                    height: frame.height,
-                    stride: frame.stride,
-                });
-
-                ctx.request_repaint();
-            }
-            Ok(None) => {}
-            Err(e) => {
-                tracing::error!("Capture error: {}", e);
-                self.stop_capture();
-            }
-        }
-    }
-
-    #[cfg(windows)]
-    fn render_preview(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if let Some(frame_data) = &self.current_frame {
-            let mut rgba_data = Vec::with_capacity((frame_data.width * frame_data.height * 4) as usize);
-
-            for y in 0..frame_data.height {
-                let row_start = (y * frame_data.stride) as usize;
-                for x in 0..frame_data.width {
-                    let pixel_start = row_start + (x * 4) as usize;
-
-                    if pixel_start + 3 < frame_data.data.len() {
-                        let b = frame_data.data[pixel_start];
-                        let g = frame_data.data[pixel_start + 1];
-                        let r = frame_data.data[pixel_start + 2];
-                        let a = frame_data.data[pixel_start + 3];
-
-                        rgba_data.push(r);
-                        rgba_data.push(g);
-                        rgba_data.push(b);
-                        rgba_data.push(a);
-                    }
-                }
-            }
-
-            let color_image = egui::ColorImage::from_rgba_unmultiplied(
-                [frame_data.width as usize, frame_data.height as usize],
-                &rgba_data,
-            );
-
-            // Get or create texture
-            let texture = self.preview_texture.get_or_insert_with(|| {
-                ctx.load_texture(
-                    "screen_preview",
-                    color_image.clone(),
-                    egui::TextureOptions::default(),
-                )
-            });
-
-            // Update texture
-            texture.set(color_image, egui::TextureOptions::default());
-
-            let available_size = ui.available_size();
-            let aspect_ratio = frame_data.width as f32 / frame_data.height as f32;
-
-            let preview_width = available_size.x.min(800.0);
-            let preview_height = preview_width / aspect_ratio;
-
-            let preview_size = egui::vec2(preview_width, preview_height);
-
-            ui.image((texture.id(), preview_size));
-
-            ui.label(format!("Resolution: {}x{}", frame_data.width, frame_data.height));
-            ui.label(format!("FPS: {:.1}", self.fps));
-        } else {
-            ui.label("No frame captured yet...");
-        }
+        app
     }
 }
 
 impl eframe::App for RivuletApp {
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, eframe::APP_KEY, self);
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        #[cfg(windows)]
-        self.update_capture(ctx);
-
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.heading("🌊 Rivulet");
-
-                ui.separator();
-
-                #[cfg(windows)]
-                {
-                    if self.capture_active {
-                        if ui.button("⏹ Stop Capture").clicked() {
-                            self.stop_capture();
-                        }
-                        ui.colored_label(egui::Color32::GREEN, "● CAPTURING");
-                    } else {
-                        if ui.button("⏺ Start Capture").clicked() {
-                            self.start_capture();
+        #[cfg(target_os = "windows")]
+        {
+            if self.is_windows_recording {
+                if self.frame_receiver.is_some() {
+                    if self.frame_receiver.as_ref().unwrap().try_recv().is_err() {
+                        if let Some(signal) = &self.stop_signal {
+                            if !signal.load(Ordering::SeqCst) {
+                                println!("Aufnahme unerwartet beendet.");
+                                self.stop_windows_recording();
+                            }
                         }
                     }
                 }
-
-                #[cfg(not(windows))]
-                {
-                    ui.label("Screen capture only available on Windows");
+            }
+            if let Some(receiver) = &self.frame_receiver {
+                while let Ok(raw_frame) = receiver.try_recv() {
+                    self.engine.process_raw_frame(
+                        &raw_frame.data,
+                        raw_frame.width,
+                        raw_frame.height,
+                    );
                 }
+            }
+        }
+
+        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+            egui::menu::bar(ui, |ui| {
+                ui.menu_button("File", |ui| {
+                    if ui.button("Quit").clicked() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                });
             });
         });
-
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Screen Capture Preview");
+            ui.heading("Welcome to Rivulet");
             ui.separator();
 
-            #[cfg(windows)]
+            #[cfg(target_os = "windows")]
             {
-                if self.capture_active {
-                    self.render_preview(ctx, ui);
+                ui.add_space(10.0);
+                ui.label(egui::RichText::new("Windows Screen Recording").strong());
+                if self.is_windows_recording {
+                    if ui.button("⏹ Stop Recording").clicked() {
+                        self.stop_windows_recording();
+                    }
                 } else {
-                    ui.vertical_centered(|ui| {
-                        ui.add_space(100.0);
-                        ui.heading("Click 'Start Capture' to begin");
-                        ui.add_space(20.0);
-                        ui.label("Your screen will be captured and displayed here in real-time");
+                    ui.horizontal(|ui| {
+                        ui.label("Quelle:");
+                        egui::ComboBox::from_id_source("monitor_select")
+                            .selected_text(
+                                self.selected_monitor_idx
+                                    .and_then(|idx| self.monitors.get(idx))
+                                    .map(|m| {
+                                        m.name()
+                                            .unwrap_or_else(|_| "Unbenannter Monitor".to_string())
+                                    })
+                                    .unwrap_or_else(|| "Monitor auswählen".to_string()),
+                            )
+                            .show_ui(ui, |ui| {
+                                for (i, monitor) in self.monitors.iter().enumerate() {
+                                    if ui
+                                        .selectable_label(
+                                            self.selected_monitor_idx == Some(i),
+                                            monitor.name().unwrap_or_else(|_| {
+                                                "Unbenannter Monitor".to_string()
+                                            }),
+                                        )
+                                        .clicked()
+                                    {
+                                        self.selected_monitor_idx = Some(i);
+                                        self.selected_window_idx = None;
+                                    }
+                                }
+                            });
+                        egui::ComboBox::from_id_source("window_select")
+                            .selected_text(
+                                self.selected_window_idx
+                                    .and_then(|idx| self.windows.get(idx))
+                                    .map(|w| w.title().unwrap_or_default())
+                                    .unwrap_or_else(|| "Fenster auswählen".to_string()),
+                            )
+                            .show_ui(ui, |ui| {
+                                for (i, window) in self.windows.iter().enumerate() {
+                                    if ui
+                                        .selectable_label(
+                                            self.selected_window_idx == Some(i),
+                                            window.title().unwrap_or_default(),
+                                        )
+                                        .clicked()
+                                    {
+                                        self.selected_window_idx = Some(i);
+                                        self.selected_monitor_idx = None;
+                                    }
+                                }
+                            });
+                        if ui
+                            .button("🔄")
+                            .on_hover_text("Quellen aktualisieren")
+                            .clicked()
+                        {
+                            self.refresh_capture_sources();
+                        }
                     });
+                    let source_selected =
+                        self.selected_monitor_idx.is_some() || self.selected_window_idx.is_some();
+                    if ui
+                        .add_enabled(source_selected, egui::Button::new("⏺ Start Recording"))
+                        .clicked()
+                    {
+                        self.start_windows_recording();
+                    };
+                }
+                if let Some(err) = &self.last_error {
+                    ui.colored_label(egui::Color32::RED, err);
                 }
             }
 
-            #[cfg(not(windows))]
+            #[cfg(target_os = "linux")]
+            { /* UI für Linux */ }
+
+            #[cfg(not(any(target_os = "linux", target_os = "windows")))]
             {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(100.0);
-                    ui.heading("Platform Not Supported");
-                    ui.add_space(20.0);
-                    ui.label("Screen capture is currently only available on Windows");
-                    ui.label("Linux and macOS support coming soon!");
-                });
+                ui.add_space(20.0);
+                ui.label(egui::RichText::new("ℹ️ Screen Recording Feature").strong());
+                ui.label("This feature is currently only available on Linux and Windows.");
             }
+
+            ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    ui.label("powered by ");
+                    ui.hyperlink_to("egui", "https://github.com/emilk/egui");
+                    ui.label(" and ");
+                    ui.hyperlink_to(
+                        "eframe",
+                        "https://github.com/emilk/egui/tree/master/crates/eframe",
+                    );
+                    ui.label(".");
+                });
+            });
         });
     }
 }

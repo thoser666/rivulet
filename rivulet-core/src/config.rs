@@ -5,6 +5,8 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Self { output_dir: std::path::PathBuf::from("./output") }
+        Self {
+            output_dir: std::path::PathBuf::from("./output"),
+        }
     }
 }
