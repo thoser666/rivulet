@@ -19,13 +19,13 @@ async-trait = "0.1"
 #rusty_ffmpeg = "0.16.7+ffmpeg.8"
 #rusty_ffmpeg = { version = "0.16.7+ffmpeg.8", features = ["link_vcpkg_ffmpeg"] }
 
-gstreamer = "0.22"
-gstreamer-app = "0.22"
-gstreamer-video = "0.22"
-gstreamer-pbutils = "0.22"
+gstreamer = "0.24"
+gstreamer-app = "0.24"
+gstreamer-video = "0.24"
+
 
 # Diese Crate wird oft als Hilfsbibliothek benötigt
-glib = "0.19"
+glib = "0.20"
 
 # Diese Crate hilft bei der einmaligen Initialisierung
-once_cell = "1.19.0" 
+once_cell = "1.19.0"
