@@ -28,6 +28,7 @@ use {
     },
     std::thread,
     windows_capture::{
+        // Importiere nur verfügbare Typen aus capture
         capture::{Context, GraphicsCaptureApiHandler},
         frame::{Frame, FrameBuffer},
         graphics_capture_api::InternalCaptureControl,
@@ -81,9 +82,9 @@ impl GraphicsCaptureApiHandler for CaptureHandler {
         }
 
         // Hole den Frame-Puffer
-        let frame_buffer = frame.buffer()?;
+        let mut frame_buffer = frame.buffer()?;
 
-        // KORREKTUR: Zugriff auf den Raw Buffer und Umwandlung in Vec
+        // KORREKTUR: Zugriff auf den Raw Buffer via .as_raw_buffer()
         let data = frame_buffer.as_raw_buffer().to_vec();
 
         let raw_frame = RawFrame {
@@ -234,7 +235,7 @@ impl RivuletApp {
             .unwrap_or_default()
             .into_iter()
             .filter(|w| {
-                // KORREKTUR: Filtern nach Titel statt is_capturable (existiert nicht mehr in v1.5.0)
+                // KORREKTUR: Filtern nach Titel (is_capturable entfernt)
                 !w.title().unwrap_or_default().is_empty()
             })
             .collect();
@@ -257,53 +258,91 @@ impl RivuletApp {
             return;
         };
 
-        let item = if let Some(idx) = self.selected_monitor_idx {
-            self.monitors.get(idx).cloned().map(|m| m.into())
+        // Bestimme die Capture-Quelle (Monitor oder Fenster) und starte entsprechend
+        if let Some(idx) = self.selected_monitor_idx {
+            let Some(monitor) = self.monitors.get(idx).cloned() else {
+                self.last_error = Some("Ausgewählte Quelle ist ungültig.".to_string());
+                return;
+            };
+
+            self.engine.start_local_recording(path.clone());
+
+            let (sender, receiver) = mpsc::channel();
+            self.frame_receiver = Some(receiver);
+
+            let stop_signal = Arc::new(AtomicBool::new(false));
+            self.stop_signal = Some(stop_signal.clone());
+
+            let flags = (sender, stop_signal);
+
+            self.is_windows_recording = true;
+            self.last_error = None;
+
+            thread::spawn(move || {
+                let settings = Settings::new(
+                    monitor,
+                    CursorCaptureSettings::Default,
+                    DrawBorderSettings::Default,
+                    SecondaryWindowSettings::Default,
+                    MinimumUpdateIntervalSettings::Default,
+                    DirtyRegionSettings::Default,
+                    ColorFormat::Rgba8,
+                    flags,
+                );
+                println!("Starte Aufnahme-Thread (Monitor)...");
+                if let Err(e) = CaptureHandler::start(settings) {
+                    if !e.to_string().contains("Benutzer gestoppt")
+                        && !e.to_string().contains("GUI-Kanal geschlossen")
+                    {
+                        eprintln!("Fehler im Aufnahme-Thread: {}", e);
+                    }
+                }
+                println!("Aufnahme-Thread beendet.");
+            });
         } else if let Some(idx) = self.selected_window_idx {
-            self.windows.get(idx).cloned().map(|w| w.into())
+            let Some(window) = self.windows.get(idx).cloned() else {
+                self.last_error = Some("Ausgewählte Quelle ist ungültig.".to_string());
+                return;
+            };
+
+            self.engine.start_local_recording(path.clone());
+
+            let (sender, receiver) = mpsc::channel();
+            self.frame_receiver = Some(receiver);
+
+            let stop_signal = Arc::new(AtomicBool::new(false));
+            self.stop_signal = Some(stop_signal.clone());
+
+            let flags = (sender, stop_signal);
+
+            self.is_windows_recording = true;
+            self.last_error = None;
+
+            thread::spawn(move || {
+                let settings = Settings::new(
+                    window,
+                    CursorCaptureSettings::Default,
+                    DrawBorderSettings::Default,
+                    SecondaryWindowSettings::Default,
+                    MinimumUpdateIntervalSettings::Default,
+                    DirtyRegionSettings::Default,
+                    ColorFormat::Rgba8,
+                    flags,
+                );
+                println!("Starte Aufnahme-Thread (Fenster)...");
+                if let Err(e) = CaptureHandler::start(settings) {
+                    if !e.to_string().contains("Benutzer gestoppt")
+                        && !e.to_string().contains("GUI-Kanal geschlossen")
+                    {
+                        eprintln!("Fehler im Aufnahme-Thread: {}", e);
+                    }
+                }
+                println!("Aufnahme-Thread beendet.");
+            });
         } else {
             self.last_error = Some("Keine Aufnahmequelle ausgewählt.".to_string());
             return;
-        };
-        let Some(item) = item else {
-            self.last_error = Some("Ausgewählte Quelle ist ungültig.".to_string());
-            return;
-        };
-
-        self.engine.start_local_recording(path);
-
-        let (sender, receiver) = mpsc::channel();
-        self.frame_receiver = Some(receiver);
-
-        let stop_signal = Arc::new(AtomicBool::new(false));
-        self.stop_signal = Some(stop_signal.clone());
-
-        let flags = (sender, stop_signal);
-
-        self.is_windows_recording = true;
-        self.last_error = None;
-
-        thread::spawn(move || {
-            let settings = Settings::new(
-                item,
-                CursorCaptureSettings::Default,
-                DrawBorderSettings::Default,
-                SecondaryWindowSettings::Default,
-                MinimumUpdateIntervalSettings::Default,
-                DirtyRegionSettings::Default,
-                ColorFormat::Rgba8,
-                flags,
-            );
-            println!("Starte Aufnahme-Thread...");
-            if let Err(e) = CaptureHandler::start(settings) {
-                if !e.to_string().contains("Benutzer gestoppt")
-                    && !e.to_string().contains("GUI-Kanal geschlossen")
-                {
-                    eprintln!("Fehler im Aufnahme-Thread: {}", e);
-                }
-            }
-            println!("Aufnahme-Thread beendet.");
-        });
+        }
     }
 
     fn stop_windows_recording(&mut self) {
@@ -390,7 +429,10 @@ impl eframe::App for RivuletApp {
                             .selected_text(
                                 self.selected_monitor_idx
                                     .and_then(|idx| self.monitors.get(idx))
-                                    .map(|m| m.name())
+                                    .map(|m| {
+                                        m.name()
+                                            .unwrap_or_else(|_| "Unbekannter Monitor".to_string())
+                                    })
                                     .unwrap_or_else(|| "Monitor auswählen".to_string()),
                             )
                             .show_ui(ui, |ui| {
@@ -398,7 +440,9 @@ impl eframe::App for RivuletApp {
                                     if ui
                                         .selectable_label(
                                             self.selected_monitor_idx == Some(i),
-                                            monitor.name(),
+                                            monitor.name().unwrap_or_else(|_| {
+                                                "Unbekannter Monitor".to_string()
+                                            }),
                                         )
                                         .clicked()
                                     {
@@ -452,8 +496,7 @@ impl eframe::App for RivuletApp {
 
             #[cfg(target_os = "linux")]
             {
-                /* Platzhalter für Linux UI */
-                // Hier könnte deine Linux-UI Logik stehen, falls du sie wieder einfügen möchtest.
+                // Placeholder für Linux UI Code
             }
 
             #[cfg(not(any(target_os = "linux", target_os = "windows")))]
