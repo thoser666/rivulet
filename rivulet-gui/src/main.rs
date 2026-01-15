@@ -33,7 +33,7 @@ fn run_native(app_name: &str, engine: RivuletEngine) -> Result<(), eframe::Error
         Box::new(|cc| {
             // Der Aufruf ist wieder einfach, die App verwaltet ihre Kommunikation intern.
             let app = RivuletApp::new(cc, engine);
-            Box::new(app)
+            Ok(Box::new(app))
         }),
     )
 }

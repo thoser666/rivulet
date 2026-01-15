@@ -42,7 +42,7 @@ version = "0.29"
 # Linux-spezifische Abhängigkeiten
 [target.'cfg(target_os = "linux")'.dependencies]
 ashpd = { version = "0.12.0", features = ["tokio"] }
-pipewire = { version = "0.9.1", features = ["v0_3_33"] }
+#pipewire = { version = "0.9.1", features = ["v0_3_33"] }
 
 
 
