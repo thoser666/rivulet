@@ -8,7 +8,7 @@ anyhow = "1.0"
 crossbeam-channel = "0.5"
 
 [dev-dependencies]
-xcap = "0.7.1"
+xcap = "0.8.2"
 
 [[example]]
 name = "test_encoder"
