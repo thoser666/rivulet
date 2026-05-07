@@ -45,7 +45,7 @@ pipewire = { version = "0.9.1", features = ["v0_3_33"] }
 
 
 [target.'cfg(target_os = "windows")'.dependencies.windows-capture]
-version = "1.5.0"
+version = "2.0.0"
 
 # Build-Abhängigkeiten
 [build-dependencies]
