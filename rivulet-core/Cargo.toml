@@ -20,7 +20,7 @@ async-trait = "0.1"
 #rusty_ffmpeg = { version = "0.16.7+ffmpeg.8", features = ["link_vcpkg_ffmpeg"] }
 
 gstreamer = "0.25"
-gstreamer-app = "0.24"
+gstreamer-app = "0.25"
 gstreamer-video = "0.25"
 
 
