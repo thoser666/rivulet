@@ -6,7 +6,7 @@ rust-version = "1.70"
 
 [dependencies]
 # GUI-Framework
-eframe = { version = "0.33.0", default-features = false, features = [
+eframe = { version = "0.34.2", default-features = false, features = [
     "accesskit",
     "default_fonts",
     "glow",
@@ -41,13 +41,13 @@ version = "0.30"
 
 # Linux-spezifische Abhängigkeiten
 [target.'cfg(target_os = "linux")'.dependencies]
-ashpd = { version = "0.12.0", features = ["tokio"] }
-#pipewire = { version = "0.9.1", features = ["v0_3_33"] }
+ashpd = { version = "0.13.10", features = ["tokio"] }
+pipewire = { version = "0.10.0", features = ["v0_3_33"] }
 
 
 
 [target.'cfg(target_os = "windows")'.dependencies.windows-capture]
-version = "1.5.0"
+version = "2.0.0"
 
 # Build-Abhängigkeiten
 [build-dependencies]
