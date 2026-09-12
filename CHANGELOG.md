@@ -2,6 +2,43 @@
 
 ## [Unreleased]
 
+- fix(alerts): **webhook listener closes connections gracefully** — the
+  forged-signature loopback test failed on macOS (`ConnectionReset` while
+  reading the 403): the server rejected on the signature check and closed
+  while the client's request body was still unread, so the peer kernel sent
+  RST and destroyed the queued response (Linux/Windows deliver it anyway;
+  macOS is the strictest). The listener now drains the announced body on the
+  early-reject path (bounded) and every response closes gracefully — flush,
+  `shutdown(Write)` FIN, then a short read-drain before drop — so a response
+  can never be lost to an RST. Same hardening class as the earlier
+  chat-fixture RST fix; no behavior change for valid requests.
+- docs(roadmap): **M5 descope annotations** for an honest milestone closure:
+  (1) the OBS plugin compatibility layer moves to M11 (new tracking issue
+  [#147](https://github.com/thoser666/Rivulet/issues/147)) — the temporary
+  native bridge is a transition convenience for existing OBS users, not a
+  requirement for Rivulet's own plugin ecosystem; (2) the legacy "Plugin
+  system (native Rust plugins)" checklist item is re-scoped to the WASM-first
+  framing actually shipped (a native Rust plugin would just be a build of
+  Rivulet itself); (3) issue #50 (code signing) is annotated as **waiting on
+  certificate purchase** — SignPath Foundation declined the free tier
+  (insufficient stars), so Windows needs an OV certificate and macOS needs
+  Apple Developer, while Linux GPG signing is already active; (4) the macOS
+  live on-device verification is marked **hardware-blocked** (one manual
+  session on a physical Mac, no pending engineering work). README M5/M11
+  sections, milestone overview table, docs/milestone-quality-gates.md and
+  docs/macos-recording.md updated; no code changes.
+- feat(plugins): **Phase 3 — capability approval + install flow** (plugin-system
+  RFC): `rivulet_core::plugin_registry` scans the per-user install root for
+  plugin bundles and owns the persisted approval store (`PluginApprovals`,
+  per-plugin/per-capability decisions with default denial; sensitive
+  capabilities `secrets`/`capture` stay denied for WASM at the policy choke
+  point regardless of the stored approval). The GUI gains a Settings → Plugins
+  section: discovered bundles show name/version/publisher/type/host-API/sandbox
+  status before activation, a permission-review dialog records Approve/Deny per
+  requested capability, and the enable toggle is blocked until every requested
+  capability is decided. Decisions persist with the app state (eframe storage)
+  and survive restarts. i18n EN/DE; 8 registry unit tests + 6 GUI approval-flow
+  tests + `plugin_registry_phase3_is_implemented` pinning guard.
 - fix(plugins): PR #142 green — three root-cause fixes on the Phase 2 branch:
   (1) **wasmtime 29 → 48.0.2** clears the six RUSTSEC advisories that failed
   `cargo audit`/`cargo deny` (RUSTSEC-2025-0046, -0118 and the wasi family);
